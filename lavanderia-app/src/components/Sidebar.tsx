@@ -57,12 +57,17 @@ export function Sidebar() {
   const initial = businessName.charAt(0).toUpperCase();
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 min-h-screen hidden md:flex flex-col transition-all shadow-sm z-10">
+    // --- CORRECCIÓN AQUÍ ---
+    // 1. Quitamos 'hidden' (para que se vea en móvil dentro del drawer)
+    // 2. Quitamos 'md:flex' (ya no es condicional)
+    // 3. Cambiamos 'w-64' por 'w-full' (para que llene el contenedor del Layout)
+    // 4. Cambiamos 'min-h-screen' por 'h-full' (para que no force scroll innecesario)
+    <aside className="w-full h-full bg-white border-r border-slate-200 flex flex-col transition-all shadow-sm">
       
-      {/* --- HEADER RENOVADO (Diseño Vertical) --- */}
+      {/* --- HEADER RENOVADO --- */}
       <div className="p-6 border-b border-slate-100 flex flex-col items-center justify-center text-center bg-slate-50/50">
         
-        {/* Contenedor del Logo con sombra suave */}
+        {/* Contenedor del Logo */}
         <div className="mb-4 relative group">
           {logoUrl ? (
              <div className="w-24 h-24 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center p-2 overflow-hidden">
@@ -78,7 +83,6 @@ export function Sidebar() {
              </div>
           )}
           
-          {/* Adorno visual (opcional) */}
           <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-full border-2 border-white shadow-sm" title="Negocio Activo">
             <Store className="w-3 h-3" />
           </div>
@@ -110,7 +114,6 @@ export function Sidebar() {
               <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
               {item.label}
               
-              {/* Indicador activo sutil */}
               {isActive && (
                 <div className="absolute right-3 w-1.5 h-1.5 bg-white rounded-full opacity-50"></div>
               )}

@@ -15,7 +15,6 @@ export function DataImporter() {
     let filename = '';
 
     if (type === 'sales') {
-      // Ejemplo: 05/01/2025
       content = 'Fecha,Monto,Categoria\n01/01/2025,120.00,Autoservicio\n01/01/2025,350.50,Por Encargo\n02/01/2025,80.00,Autoservicio';
       filename = 'plantilla_ventas.csv';
     } else {
@@ -55,23 +54,18 @@ export function DataImporter() {
     event.target.value = '';
   };
 
-  // --- HELPER: CONVERTIR DD/MM/AAAA -> YYYY-MM-DD ---
-  // La base de datos siempre necesita YYYY-MM-DD, pero el usuario sube DD/MM/AAAA
   const parseDateMX = (dateStr: string): string | null => {
     if (!dateStr) return null;
-    
-    // Si ya viene en formato ISO (2025-01-05), lo dejamos pasar
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
 
-    // Buscamos formato DD/MM/AAAA o D/M/AAAA
     const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (match) {
       const day = match[1].padStart(2, '0');
       const month = match[2].padStart(2, '0');
       const year = match[3];
-      return `${year}-${month}-${day}`; // Retorna ISO
+      return `${year}-${month}-${day}`; 
     }
-    return null; // Fecha inválida
+    return null; 
   };
 
   const syncCategories = async (newCategories: string[], type: 'income' | 'expense') => {
@@ -98,37 +92,30 @@ export function DataImporter() {
     let currentBatch: any[] = [];
     const uniqueCategoriesFound = new Set<string>();
     
-    // Regex para detectar fechas tipo "01/05/2025" o "1/5/2025"
     const dateRegexMX = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
-
     const rowsToInsert = [];
 
     for (const row of rows) {
       const values = Object.values(row);
       
-      // 1. Buscar fecha en formato DD/MM/AAAA
       let rawDate = values.find((v: any) => dateRegexMX.test(v));
-      
-      // Si no la encuentra por valor, busca por nombre de columna
       if (!rawDate && row['fecha'] && dateRegexMX.test(row['fecha'])) {
         rawDate = row['fecha'];
       }
 
-      // 2. Convertir a formato base de datos
       const dateISO = parseDateMX(rawDate as string);
-
       if (!dateISO) {
-        // Si falla la fecha, intentamos ver si era un archivo viejo con formato YYYY-MM-DD
         if (row['fecha'] && /^\d{4}-\d{2}-\d{2}$/.test(row['fecha'])) {
-             // Es válido, seguimos
+             // válido
         } else {
-             continue; // Saltamos si no hay fecha válida
+             continue; 
         }
       }
 
       const finalDate = dateISO || row['fecha'];
 
-      let amount, category, description;
+      // CORRECCIÓN AQUÍ: Definir explícitamente el tipo 'any' para evitar error TS7034
+      let amount: any, category: any, description: any;
 
       if (type === 'ventas') {
         amount = parseFloat(row['monto'] || row['importe'] || values.find((v:any) => !isNaN(parseFloat(v)) && v !== rawDate));
@@ -155,7 +142,6 @@ export function DataImporter() {
         });
 
       } else {
-        // GASTOS
         category = (row['concepto'] || row['categoria'] || values[1])?.toString().toUpperCase().trim();
         amount = parseFloat(row['monto'] || row['importe'] || values[2]);
 
@@ -210,7 +196,6 @@ export function DataImporter() {
       </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        
         {/* VENTAS */}
         <div className="flex flex-col gap-4">
             <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-xl">
@@ -256,7 +241,6 @@ export function DataImporter() {
                 </label>
             </div>
         </div>
-
       </div>
 
       <div className="mt-8 bg-slate-900 text-slate-300 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs shadow-inner border border-slate-700">

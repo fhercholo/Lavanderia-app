@@ -6,9 +6,9 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
-  Plus, Trash2, X, Edit2, ChevronLeft, ChevronRight, 
-  TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight 
-} from 'lucide-react'; // Nuevos iconos geométricos
+  Plus, Trash2, X, Edit2, 
+  TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight 
+} from 'lucide-react'; 
 import { TransactionModal } from './TransactionModal';
 
 export function CalendarView() {
@@ -195,7 +195,7 @@ export function CalendarView() {
         })}
       </div>
 
-      {/* MODAL (Sin cambios funcionales, solo visuales internos) */}
+      {/* MODAL */}
       {selectedDay && (
         <DayDetailModal 
           date={selectedDay} 
@@ -207,7 +207,7 @@ export function CalendarView() {
   );
 }
 
-// --- SUB-COMPONENTE MODAL (Optimizado) ---
+// --- SUB-COMPONENTE MODAL ---
 function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () => void, onUpdate: () => void }) {
   const [txs, setTxs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,7 +258,6 @@ function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () =
               {txs.map(tx => (
                 <div key={tx.id} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group">
                   <div className="flex items-center gap-3">
-                    {/* Icono diferenciador para daltonismo */}
                     <div className={`p-2 rounded-lg ${tx.type === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                         {tx.type === 'income' ? <ArrowUpRight className="w-4 h-4"/> : <ArrowDownRight className="w-4 h-4"/>}
                     </div>

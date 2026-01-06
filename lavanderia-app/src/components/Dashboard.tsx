@@ -5,12 +5,12 @@ import {
   TrendingUp, TrendingDown, DollarSign, Landmark 
 } from 'lucide-react';
 import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList 
 } from 'recharts';
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, format } from 'date-fns';
 
 export function Dashboard() {
-  const [loading, setLoading] = useState(true);
+  // ELIMINADO: loading (no se usaba para mostrar nada en pantalla)
   
   // --- FILTROS ---
   const currentYear = new Date().getFullYear();
@@ -27,6 +27,7 @@ export function Dashboard() {
   const [monthlyIncomeData, setMonthlyIncomeData] = useState<any[]>([]);
   const [monthlyExpenseData, setMonthlyExpenseData] = useState<any[]>([]);
 
+  // Arreglo de años para el select
   const years = Array.from({ length: 5 }, (_, i) => 2024 + i);
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -44,7 +45,7 @@ export function Dashboard() {
   // --- EFECTO 1: CARGAR HISTÓRICO GLOBAL (Solo una vez al inicio) ---
   useEffect(() => {
     const fetchGlobalStats = async () => {
-      // Pedimos SOLO tipo y monto de TODA la historia (sin filtros de fecha)
+      // Pedimos SOLO tipo y monto de TODA la historia
       const { data } = await supabase.from('transactions').select('type, amount');
       
       let gIncome = 0, gExpense = 0;
@@ -59,70 +60,69 @@ export function Dashboard() {
 
   // --- EFECTO 2: CARGAR DATOS FILTRADOS (Cada vez que cambian filtros) ---
   useEffect(() => {
+    const fetchFilteredData = async () => {
+      // (Eliminado setLoading ya que no se usaba visualmente)
+      let startStr, endStr;
+      const baseDate = new Date(selectedYear, 0, 1);
+
+      if (selectedMonth === 'all') {
+        startStr = format(startOfYear(baseDate), 'yyyy-MM-dd');
+        endStr = format(endOfYear(baseDate), 'yyyy-MM-dd');
+      } else {
+        const monthDate = new Date(selectedYear, parseInt(selectedMonth), 1);
+        startStr = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+        endStr = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+      }
+
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('*')
+        .gte('date', startStr)
+        .lte('date', endStr);
+
+      if (!txs) return;
+
+      // Calcular KPIs del periodo
+      let income = 0, expense = 0;
+      txs.forEach(tx => {
+        if (tx.type === 'income') income += Number(tx.amount);
+        else expense += Number(tx.amount);
+      });
+      setFilteredKpis({ income, expense, profit: income - expense });
+
+      // Procesar Gráficas
+      if (selectedMonth === 'all') {
+        const monthlyData = months.map(m => ({ name: m.substring(0,3), income: 0, expense: 0 }));
+        txs.forEach(tx => {
+          const monthIndex = parseInt(tx.date.split('-')[1]) - 1;
+          if (monthIndex >= 0 && monthIndex < 12) {
+            if (tx.type === 'income') monthlyData[monthIndex].income += Number(tx.amount);
+            else monthlyData[monthIndex].expense += Number(tx.amount);
+          }
+        });
+        setAnnualData(monthlyData);
+      } else {
+        const incomeMap: Record<string, number> = {};
+        const expenseMap: Record<string, number> = {};
+        
+        txs.forEach(tx => {
+          const val = Number(tx.amount);
+          if (tx.type === 'income') {
+            incomeMap[tx.category] = (incomeMap[tx.category] || 0) + val;
+          } else {
+            expenseMap[tx.category] = (expenseMap[tx.category] || 0) + val;
+          }
+        });
+
+        const iData = Object.keys(incomeMap).map(k => ({ name: k, value: incomeMap[k] })).sort((a,b) => b.value - a.value);
+        const eData = Object.keys(expenseMap).map(k => ({ name: k, value: expenseMap[k] })).sort((a,b) => b.value - a.value);
+        setMonthlyIncomeData(iData);
+        setMonthlyExpenseData(eData);
+      }
+    };
+
     fetchFilteredData();
   }, [selectedYear, selectedMonth]);
-
-  const fetchFilteredData = async () => {
-    setLoading(true);
-    let startStr, endStr;
-    const baseDate = new Date(selectedYear, 0, 1);
-
-    if (selectedMonth === 'all') {
-      startStr = format(startOfYear(baseDate), 'yyyy-MM-dd');
-      endStr = format(endOfYear(baseDate), 'yyyy-MM-dd');
-    } else {
-      const monthDate = new Date(selectedYear, parseInt(selectedMonth), 1);
-      startStr = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-      endStr = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-    }
-
-    const { data: txs } = await supabase
-      .from('transactions')
-      .select('*')
-      .gte('date', startStr)
-      .lte('date', endStr);
-
-    if (!txs) { setLoading(false); return; }
-
-    // Calcular KPIs del periodo
-    let income = 0, expense = 0;
-    txs.forEach(tx => {
-      if (tx.type === 'income') income += Number(tx.amount);
-      else expense += Number(tx.amount);
-    });
-    setFilteredKpis({ income, expense, profit: income - expense });
-
-    // Procesar Gráficas
-    if (selectedMonth === 'all') {
-      const monthlyData = months.map(m => ({ name: m.substring(0,3), income: 0, expense: 0 }));
-      txs.forEach(tx => {
-        const monthIndex = parseInt(tx.date.split('-')[1]) - 1;
-        if (monthIndex >= 0 && monthIndex < 12) {
-          if (tx.type === 'income') monthlyData[monthIndex].income += Number(tx.amount);
-          else monthlyData[monthIndex].expense += Number(tx.amount);
-        }
-      });
-      setAnnualData(monthlyData);
-    } else {
-      const incomeMap: Record<string, number> = {};
-      const expenseMap: Record<string, number> = {};
-      
-      txs.forEach(tx => {
-        const val = Number(tx.amount);
-        if (tx.type === 'income') {
-          incomeMap[tx.category] = (incomeMap[tx.category] || 0) + val;
-        } else {
-          expenseMap[tx.category] = (expenseMap[tx.category] || 0) + val;
-        }
-      });
-
-      const iData = Object.keys(incomeMap).map(k => ({ name: k, value: incomeMap[k] })).sort((a,b) => b.value - a.value);
-      const eData = Object.keys(expenseMap).map(k => ({ name: k, value: expenseMap[k] })).sort((a,b) => b.value - a.value);
-      setMonthlyIncomeData(iData);
-      setMonthlyExpenseData(eData);
-    }
-    setLoading(false);
-  };
 
   const HorizontalChart = ({ data, color }: { data: any[], color: string }) => (
     <ResponsiveContainer width="100%" height="100%">
@@ -142,7 +142,7 @@ export function Dashboard() {
     <div className="space-y-6 animate-fade-in pb-10">
       
       {/* =========================================================
-          SECCIÓN 1: TOTALES HISTÓRICOS (SIEMPRE VISIBLES)
+          SECCIÓN 1: TOTALES HISTÓRICOS
           ========================================================= */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
         {/* Histórico Ingresos */}
