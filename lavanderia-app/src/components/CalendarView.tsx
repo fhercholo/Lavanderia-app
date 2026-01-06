@@ -63,49 +63,60 @@ export function CalendarView() {
     return { income, expense, profit, count: dayTxs.length };
   };
 
-  // Formato compacto: $1,200 (Sin decimales para ahorrar espacio)
+  // Formato súper compacto para celular
   const formatCompact = (val: number) => 
     new Intl.NumberFormat('es-MX', { 
-      style: 'currency', currency: 'MXN', maximumFractionDigits: 0 
+      style: 'currency', currency: 'MXN', maximumFractionDigits: 0,
+      notation: "compact" // Esto convierte 1500 en 1.5K si es necesario ahorrar espacio
     }).format(val);
 
   return (
-    <div className="animate-fade-in h-[calc(100vh-100px)] flex flex-col p-2">
+    <div className="animate-fade-in flex flex-col h-full md:p-2">
       
       {/* CABECERA */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-        <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-700 hidden sm:block">Calendario</h2>
-            <select 
-                value={currentDate.getMonth()} 
-                onChange={handleMonthChange}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg outline-none block p-2.5 font-bold"
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+            <h2 className="text-lg font-bold text-slate-700 hidden sm:block">Calendario</h2>
+            <div className="flex gap-2">
+              <select 
+                  value={currentDate.getMonth()} 
+                  onChange={handleMonthChange}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg outline-none block p-2 font-bold w-32"
+              >
+                  {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+              <select 
+                  value={currentDate.getFullYear()} 
+                  onChange={handleYearChange}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg outline-none block p-2 font-bold"
+              >
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            
+            <button 
+              onClick={() => setCurrentDate(new Date())} 
+              className="sm:hidden text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg"
             >
-                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-            <select 
-                value={currentDate.getFullYear()} 
-                onChange={handleYearChange}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg outline-none block p-2.5 font-bold"
-            >
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+              Hoy
+            </button>
         </div>
+        
         <button 
             onClick={() => setCurrentDate(new Date())} 
-            className="text-sm font-medium text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
+            className="hidden sm:block text-sm font-medium text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
         >
             Ir a Hoy
         </button>
       </div>
 
       {/* GRID (Días de la semana) */}
-      <div className="grid grid-cols-7 gap-2 mb-2 text-center text-slate-500 font-bold text-xs uppercase tracking-wider">
+      <div className="grid grid-cols-7 gap-1 mb-1 text-center text-slate-500 font-bold text-[10px] sm:text-xs uppercase tracking-wider">
         {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => <div key={d}>{d}</div>)}
       </div>
 
       {/* GRID DEL CALENDARIO */}
-      <div className="grid grid-cols-7 gap-2 flex-1 auto-rows-fr overflow-y-auto">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 flex-1 auto-rows-fr overflow-y-auto pb-20">
         {Array.from({ length: startingDayIndex }).map((_, i) => (
           <div key={`empty-${i}`} />
         ))}
@@ -114,79 +125,72 @@ export function CalendarView() {
           const summary = getDaySummary(day);
           const isToday = isSameDay(day, new Date());
           const hasActivity = summary.count > 0;
-          // Determinamos si es ganancia o pérdida para elegir iconos
           const isProfit = summary.profit >= 0;
 
           return (
             <div 
               key={day.toISOString()}
               onClick={() => setSelectedDay(day)}
-              // min-h-[100px] asegura que la celda sea alta aunque se encoja la pantalla
+              // Altura dinámica: 70px en movil, 100px en PC
               className={`
-                relative p-2 rounded-xl border cursor-pointer transition-all flex flex-col min-h-[100px] group
-                ${isToday ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300' : 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-md'}
+                relative p-1 sm:p-2 rounded-lg sm:rounded-xl border cursor-pointer transition-all flex flex-col min-h-[70px] sm:min-h-[100px] group
+                ${isToday ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300' : 'bg-white border-slate-200 active:bg-slate-50 sm:hover:border-blue-400 sm:hover:shadow-md'}
                 ${!isSameMonth(day, currentDate) ? 'opacity-40 bg-slate-50' : ''}
               `}
             >
-              {/* Encabezado de la celda: Día e Icono de Estado */}
-              <div className="flex justify-between items-start mb-1">
-                 <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-700 group-hover:bg-slate-100'}`}>
+              {/* Encabezado de la celda */}
+              <div className="flex justify-between items-start mb-0.5 sm:mb-1">
+                 <span className={`text-[10px] sm:text-sm font-bold w-5 h-5 sm:w-7 sm:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-700 sm:group-hover:bg-slate-100'}`}>
                     {format(day, 'd')}
                  </span>
                  
-                 {/* ICONO DE ESTADO (Accesible) */}
                  {hasActivity && (
-                    <div title={isProfit ? "Ganancia Neta" : "Pérdida Neta"}>
+                    <div className="hidden sm:block"> {/* Icono solo en PC para no ensuciar el movil */}
                         {isProfit ? (
-                            <TrendingUp className="w-5 h-5 text-emerald-600" />
+                            <TrendingUp className="w-4 h-4 text-emerald-600" />
                         ) : (
-                            <TrendingDown className="w-5 h-5 text-rose-600" />
+                            <TrendingDown className="w-4 h-4 text-rose-600" />
                         )}
                     </div>
                  )}
               </div>
               
-              {/* Contenido (Ingresos/Gastos) Compacto */}
+              {/* Contenido (Ingresos/Gastos) */}
               {hasActivity ? (
-                <div className="flex flex-col gap-0.5 mt-auto text-[11px]">
+                <div className="flex flex-col gap-0.5 mt-auto text-[9px] sm:text-[11px] leading-tight">
                     
-                    {/* Línea Ingresos (Flecha Arriba) */}
+                    {/* Ingresos */}
                     {summary.income > 0 && (
-                        <div className="flex justify-between text-slate-500">
-                            <span className="flex items-center gap-1">
-                                <ArrowUpRight className="w-3 h-3"/> 
-                                Ing:
+                        <div className="flex justify-end sm:justify-between text-emerald-700 font-medium">
+                            {/* "Ing:" solo visible en PC (sm) */}
+                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal">
+                                <ArrowUpRight className="w-3 h-3"/> Ing:
                             </span>
-                            <span className="font-medium text-slate-700">
-                                {formatCompact(summary.income)}
-                            </span>
+                            <span>{formatCompact(summary.income)}</span>
                         </div>
                     )}
 
-                    {/* Línea Gastos (Flecha Abajo) */}
+                    {/* Gastos */}
                     {summary.expense > 0 && (
-                        <div className="flex justify-between text-slate-500">
-                            <span className="flex items-center gap-1">
-                                <ArrowDownRight className="w-3 h-3"/> 
-                                Gas:
+                        <div className="flex justify-end sm:justify-between text-rose-700 font-medium">
+                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal">
+                                <ArrowDownRight className="w-3 h-3"/> Gas:
                             </span>
-                            <span className="font-medium text-slate-700">
-                                {formatCompact(summary.expense)}
-                            </span>
+                            <span>-{formatCompact(summary.expense)}</span>
                         </div>
                     )}
 
-                    {/* BALANCE FINAL (Con signo explícito) */}
-                    <div className={`flex justify-between items-center border-t border-slate-100 pt-1 mt-1 font-bold ${isProfit ? 'text-slate-800' : 'text-slate-800'}`}>
-                        <span>Total:</span>
-                        <span className={isProfit ? 'text-emerald-700' : 'text-rose-700'}>
-                            {isProfit ? '+' : ''}{formatCompact(summary.profit)}
+                    {/* Total (visible siempre, pero simplificado en movil) */}
+                    <div className={`flex justify-end sm:justify-between items-center border-t border-slate-100 pt-0.5 mt-0.5 font-bold ${isProfit ? 'text-slate-800' : 'text-slate-800'}`}>
+                        <span className="hidden sm:inline">Total:</span>
+                        <span className={isProfit ? 'text-blue-700' : 'text-rose-700'}>
+                            {formatCompact(summary.profit)}
                         </span>
                     </div>
 
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center opacity-0 group-hover:opacity-20 transition-opacity">
+                <div className="flex-1 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-20 transition-opacity">
                     <Plus className="w-6 h-6 text-slate-400"/>
                 </div>
               )}
