@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Un color de fondo suave para que no lastime la vista */
+body {
+  @apply bg-slate-50 text-slate-900;
+}
