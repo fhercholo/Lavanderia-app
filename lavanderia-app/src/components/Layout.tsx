@@ -1,51 +1,65 @@
-import { useState } from 'react'; // <--- AQUÍ ESTABA EL CAMBIO
+import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
 import { Menu, X } from 'lucide-react';
+import { Sidebar } from './Sidebar';
 
 export function Layout() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       
-      {/* --- BOTÓN DE MENÚ MÓVIL (Solo visible en cel) --- */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm">
-        <span className="font-bold text-lg text-blue-600">Tropalimpia</span>
+      {/* 1. SIDEBAR PARA ESCRITORIO (Visible solo en pantallas grandes md:flex) */}
+      <div className="hidden md:flex w-72 flex-col h-full z-20">
+        <Sidebar /> 
+      </div>
+
+      {/* 2. SIDEBAR PARA MÓVIL (Con fondo oscuro y animación) */}
+      {/* Fondo oscuro (Overlay) */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm transition-opacity"
+          onClick={() => setSidebarOpen(false)} // Cierra al dar clic afuera
+        />
+      )}
+
+      {/* El menú lateral móvil */}
+      <div className={`fixed inset-y-0 left-0 w-72 bg-white z-40 transform transition-transform duration-300 ease-in-out md:hidden shadow-2xl ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {/* Pasamos la función onClose para que los links cierren el menú */}
+        <Sidebar onClose={() => setSidebarOpen(false)} />
+        
+        {/* Botón X flotante para cerrar */}
         <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 rounded-md hover:bg-gray-100 text-gray-600"
+          onClick={() => setSidebarOpen(false)}
+          className="absolute top-4 right-[-3rem] p-2 bg-white rounded-full shadow-md text-slate-600 md:hidden"
         >
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          <X className="w-6 h-6" />
         </button>
       </div>
 
-      {/* --- SIDEBAR (Adaptable) --- */}
-      {/* En móvil: es fijo y se desliza. En escritorio (md): es estático y siempre visible */}
-      <div className={`
-        fixed inset-y-0 left-0 z-30 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
-        md:relative md:translate-x-0 
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        mt-14 md:mt-0 /* Margen superior solo en móvil para no tapar el header */
-      `}>
-        <Sidebar />
-      </div>
-
-      {/* --- FONDO OSCURO (Overlay) --- */}
-      {/* Solo aparece en móvil cuando el menú está abierto para cerrar al hacer clic fuera */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        ></div>
-      )}
-
-      {/* --- CONTENIDO PRINCIPAL --- */}
-      <main className="flex-1 overflow-auto w-full pt-16 md:pt-0 p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          <Outlet />
+      {/* 3. CONTENIDO PRINCIPAL */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
+        
+        {/* Botón Hamburguesa (Solo móvil) */}
+        <div className="md:hidden p-4 bg-white border-b border-slate-200 flex items-center justify-between shadow-sm z-10">
+           <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 active:scale-95 transition"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              <span className="font-bold text-slate-800">Menú</span>
+           </div>
+           {/* Logo pequeño opcional */}
+           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">L</div>
         </div>
-      </main>
+
+        {/* Aquí se renderizan tus páginas (Dashboard, Calendario, etc) */}
+        <main className="flex-1 overflow-auto p-2 md:p-6 w-full max-w-[1600px] mx-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
