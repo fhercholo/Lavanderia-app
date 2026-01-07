@@ -10,16 +10,16 @@ import {
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Camera 
 } from 'lucide-react'; 
 import { TransactionModal } from './TransactionModal';
-// 1. IMPORTAMOS EL ESCÁNER
 import { TicketScanner } from './TicketScanner'; 
+import { useAuth } from '../context/AuthContext'; // <--- IMPORTANTE
 
 export function CalendarView() {
+  const { isAdmin } = useAuth(); // <--- VERIFICAR ROL
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  // Estados para modales
-  const [isScannerOpen, setIsScannerOpen] = useState(false); // <--- ESTADO NUEVO PARA EL ESCÁNER
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   
   const years = Array.from({ length: 7 }, (_, i) => 2024 + i);
   const months = [
@@ -68,19 +68,15 @@ export function CalendarView() {
     return { income, expense, profit, count: dayTxs.length };
   };
 
-  // 2. FUNCIÓN PARA GUARDAR LO QUE ESCANEA EL TICKET
   const handleScanSuccess = async (scannedTxs: any[]) => {
     if (scannedTxs.length === 0) return;
-    
-    // Guardar todos los movimientos en Supabase de golpe
     const { error } = await supabase.from('transactions').insert(scannedTxs);
-    
     if (error) {
         alert('Error al guardar movimientos: ' + error.message);
     } else {
         alert(`¡Éxito! Se registraron ${scannedTxs.length} movimientos del corte.`);
         setIsScannerOpen(false);
-        fetchMonthData(); // Recargar calendario para ver los cambios
+        fetchMonthData(); 
     }
   };
 
@@ -122,17 +118,17 @@ export function CalendarView() {
             </button>
         </div>
         
-        {/* BOTONERA DERECHA */}
         <div className="flex gap-2 w-full sm:w-auto">
-            
-            {/* 3. AQUÍ ESTÁ EL BOTÓN DE ESCANEAR QUE TE FALTABA */}
-            <button 
-                onClick={() => setIsScannerOpen(true)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800 transition"
-            >
-                <Camera className="w-4 h-4" /> 
-                <span className="inline">Escanear Corte</span>
-            </button>
+            {/* SOLO ADMIN VE BOTÓN ESCANEAR */}
+            {isAdmin && (
+              <button 
+                  onClick={() => setIsScannerOpen(true)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800 transition"
+              >
+                  <Camera className="w-4 h-4" /> 
+                  <span className="inline">Escanear Corte</span>
+              </button>
+            )}
 
             <button 
                 onClick={() => setCurrentDate(new Date())} 
@@ -143,12 +139,10 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* GRID (Días de la semana) */}
       <div className="grid grid-cols-7 gap-1 mb-1 text-center text-slate-500 font-bold text-[10px] sm:text-xs uppercase tracking-wider">
         {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => <div key={d}>{d}</div>)}
       </div>
 
-      {/* GRID DEL CALENDARIO */}
       <div className="grid grid-cols-7 gap-1 sm:gap-2 flex-1 auto-rows-fr overflow-y-auto pb-20">
         {Array.from({ length: startingDayIndex }).map((_, i) => (
           <div key={`empty-${i}`} />
@@ -204,16 +198,18 @@ export function CalendarView() {
                     </div>
                 </div>
               ) : (
-                <div className="flex-1 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-20 transition-opacity">
-                    <Plus className="w-6 h-6 text-slate-400"/>
-                </div>
+                // SOLO ADMIN VE EL BOTÓN "+" EN DÍAS VACÍOS
+                isAdmin && (
+                  <div className="flex-1 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-20 transition-opacity">
+                      <Plus className="w-6 h-6 text-slate-400"/>
+                  </div>
+                )
               )}
             </div>
           );
         })}
       </div>
 
-      {/* 4. AQUÍ SE MUESTRA EL COMPONENTE DE ESCÁNER */}
       {isScannerOpen && (
         <TicketScanner 
           onScanComplete={handleScanSuccess} 
@@ -221,7 +217,6 @@ export function CalendarView() {
         />
       )}
 
-      {/* MODAL DETALLE DÍA (Mantenemos tu lógica original) */}
       {selectedDay && (
         <DayDetailModal 
           date={selectedDay} 
@@ -233,8 +228,9 @@ export function CalendarView() {
   );
 }
 
-// --- SUB-COMPONENTE MODAL (Tu código original sin cambios) ---
+// --- SUB-COMPONENTE MODAL MODIFICADO ---
 function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () => void, onUpdate: () => void }) {
+  const { isAdmin } = useAuth(); // <--- ROL
   const [txs, setTxs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -296,10 +292,13 @@ function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () =
                     <span className={`font-bold text-sm ${tx.type === 'income' ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toLocaleString()}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEdit(tx)} className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(tx.id)} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                    </div>
+                    {/* SOLO ADMIN VE BOTONES DE EDITAR/BORRAR */}
+                    {isAdmin && (
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleEdit(tx)} className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDelete(tx.id)} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -307,9 +306,14 @@ function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () =
           )}
         </div>
         <div className="p-4 bg-white border-t border-slate-100">
-          <button onClick={() => { setEditingTx(null); setIsAddOpen(true); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg">
-            <Plus className="w-5 h-5" /> Agregar Nuevo
-          </button>
+          {/* SOLO ADMIN VE BOTÓN AGREGAR */}
+          {isAdmin ? (
+            <button onClick={() => { setEditingTx(null); setIsAddOpen(true); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg">
+              <Plus className="w-5 h-5" /> Agregar Nuevo
+            </button>
+          ) : (
+            <div className="text-center text-xs text-slate-400 py-2">Solo lectura (Auditor)</div>
+          )}
         </div>
       </div>
     </div>

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { LayoutDashboard, Upload, CalendarDays, Tag, FileText, LogOut, Store, Coins } from 'lucide-react';
+import { useAuth } from '../context/AuthContext'; // <--- IMPORTANTE
 
-// Aceptamos una propiedad para cerrar el menú (opcional)
 interface SidebarProps {
   onClose?: () => void;
 }
 
 export function Sidebar({ onClose }: SidebarProps) {
+  const { isAdmin, session } = useAuth(); // <--- CONECTADO A LA REALIDAD
   const location = useLocation();
   
   const [businessName, setBusinessName] = useState('Lavandería');
@@ -35,24 +36,7 @@ export function Sidebar({ onClose }: SidebarProps) {
         document.title = `${data.name} | Sistema de Gestión`;
       }
     };
-
     fetchSettings();
-
-    const subscription = supabase
-      .channel('business_settings_changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'business_settings' },
-        (payload) => {
-          if (payload.new) {
-            if (payload.new.name) setBusinessName(payload.new.name);
-            if (payload.new.logo_url) setLogoUrl(payload.new.logo_url);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { subscription.unsubscribe(); };
   }, []);
 
   const initial = businessName.charAt(0).toUpperCase();
@@ -92,7 +76,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             <Link
               key={item.path}
               to={item.path}
-              onClick={onClose} // <--- AQUÍ ESTÁ LA MAGIA: Cierra el menú al dar clic
+              onClick={onClose} 
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium group relative ${
                 isActive 
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-200' 
@@ -120,14 +104,23 @@ export function Sidebar({ onClose }: SidebarProps) {
         </button>
       </div>
 
+      {/* --- FICHA DE USUARIO REAL (DINÁMICA) --- */}
       <div className="p-4 border-t border-slate-200">
         <div className="flex items-center gap-3 bg-slate-100/50 p-2 rounded-lg border border-slate-100">
-          <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-xs shadow-sm">ADM</div>
-          <div className="overflow-hidden">
-            <p className="text-xs font-bold text-slate-700 truncate">Administrador</p>
+          {/* CÍRCULO: Morado si es Admin, Gris si es Auditor */}
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm ${isAdmin ? 'bg-purple-600' : 'bg-slate-500'}`}>
+            {isAdmin ? 'ADM' : 'AUD'}
+          </div>
+          <div className="overflow-hidden w-full">
+            {/* TEXTO: Cambia según el permiso real */}
+            <p className="text-xs font-bold text-slate-700 truncate">
+                {isAdmin ? 'Administrador' : 'Auditor (Solo Ver)'}
+            </p>
             <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <p className="text-[10px] text-emerald-600 font-medium">En línea</p>
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isAdmin ? 'bg-purple-500' : 'bg-slate-400'}`}></span>
+                <p className="text-[10px] text-slate-500 font-medium truncate" title={session?.user.email}>
+                    {session?.user.email}
+                </p>
             </div>
           </div>
         </div>

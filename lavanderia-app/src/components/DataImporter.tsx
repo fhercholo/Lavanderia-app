@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import Papa from 'papaparse';
 import { supabase } from '../supabase';
-import { Upload, Loader2, FileDown, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, Loader2, FileDown, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext'; // <--- IMPORTAR AUTH
 
 export function DataImporter() {
+  const { isAdmin } = useAuth(); // <--- VERIFICAR ROL
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -33,6 +35,8 @@ export function DataImporter() {
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'ventas' | 'gastos') => {
+    if (!isAdmin) return;
+    
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -146,7 +150,9 @@ export function DataImporter() {
         amount = parseFloat(row['monto'] || row['importe'] || values[2]);
 
         if (!amount || !category) continue;
-        if (category === 'TOTAL' || category === 'CAJA') continue;
+        
+        // CORRECCIÓN APLICADA: Ya solo bloqueamos "TOTAL"
+        if (category === 'TOTAL') continue;
 
         uniqueCategoriesFound.add(category);
 
@@ -195,62 +201,74 @@ export function DataImporter() {
         <p className="text-slate-500 mt-2">Sube tus archivos Excel (.csv) usando el formato: <strong>DD/MM/AAAA</strong>.</p>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* VENTAS */}
-        <div className="flex flex-col gap-4">
-            <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-xl">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-emerald-800 flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5"/> Importar Ventas
-                    </h3>
-                    <button onClick={() => downloadTemplate('sales')} className="text-xs flex items-center gap-1 bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition shadow-sm" title="Descargar ejemplo">
-                        <FileDown className="w-4 h-4"/> Plantilla
-                    </button>
-                </div>
-                <p className="text-xs text-emerald-700/70 mb-4 h-10">
-                    Ejemplo de fecha: <strong>31/12/2025</strong>. El sistema detecta "Autoservicio" o "Por Encargo".
-                </p>
-                <label className="cursor-pointer block">
-                    <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 text-center hover:bg-emerald-100/50 transition bg-white">
-                        <span className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-emerald-700 transition">Subir CSV Ventas</span>
-                        <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, 'ventas')} disabled={loading}/>
-                    </div>
-                </label>
+      {!isAdmin ? (
+        <div className="bg-slate-100 border border-slate-200 rounded-xl p-10 text-center text-slate-500 flex flex-col items-center gap-4">
+            <div className="bg-slate-200 p-4 rounded-full"><Lock className="w-8 h-8 text-slate-400"/></div>
+            <div>
+                <h3 className="font-bold text-lg text-slate-700">Acceso Restringido</h3>
+                <p className="text-sm">Solo el Administrador puede importar datos masivos.</p>
             </div>
         </div>
-
-        {/* GASTOS */}
-        <div className="flex flex-col gap-4">
-            <div className="bg-rose-50 border border-rose-100 p-5 rounded-xl">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-rose-800 flex items-center gap-2">
-                        <AlertCircle className="w-5 h-5"/> Importar Gastos
-                    </h3>
-                    <button onClick={() => downloadTemplate('expenses')} className="text-xs flex items-center gap-1 bg-white border border-rose-200 text-rose-700 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition shadow-sm" title="Descargar ejemplo">
-                        <FileDown className="w-4 h-4"/> Plantilla
-                    </button>
-                </div>
-                <p className="text-xs text-rose-700/70 mb-4 h-10">
-                    Ejemplo: <strong>05/01/2025, JABON, 500</strong>. Las categorías nuevas se crean solas.
-                </p>
-                <label className="cursor-pointer block">
-                    <div className="border-2 border-dashed border-rose-300 rounded-lg p-6 text-center hover:bg-rose-100/50 transition bg-white">
-                        <span className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-rose-700 transition">Subir CSV Gastos</span>
-                        <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, 'gastos')} disabled={loading}/>
+      ) : (
+        <>
+            <div className="grid gap-8 md:grid-cols-2">
+                {/* VENTAS */}
+                <div className="flex flex-col gap-4">
+                    <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-xl">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="font-bold text-emerald-800 flex items-center gap-2">
+                                <CheckCircle2 className="w-5 h-5"/> Importar Ventas
+                            </h3>
+                            <button onClick={() => downloadTemplate('sales')} className="text-xs flex items-center gap-1 bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition shadow-sm" title="Descargar ejemplo">
+                                <FileDown className="w-4 h-4"/> Plantilla
+                            </button>
+                        </div>
+                        <p className="text-xs text-emerald-700/70 mb-4 h-10">
+                            Ejemplo de fecha: <strong>31/12/2025</strong>. El sistema detecta "Autoservicio" o "Por Encargo".
+                        </p>
+                        <label className="cursor-pointer block">
+                            <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 text-center hover:bg-emerald-100/50 transition bg-white">
+                                <span className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-emerald-700 transition">Subir CSV Ventas</span>
+                                <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, 'ventas')} disabled={loading}/>
+                            </div>
+                        </label>
                     </div>
-                </label>
-            </div>
-        </div>
-      </div>
+                </div>
 
-      <div className="mt-8 bg-slate-900 text-slate-300 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs shadow-inner border border-slate-700">
-        <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
-            <span className="font-bold text-slate-400">LOG DE SISTEMA</span>
-            {loading && <span className="flex items-center gap-2 text-yellow-400"><Loader2 className="animate-spin w-3 h-3"/> Procesando...</span>}
-        </div>
-        {logs.length === 0 && <p className="text-slate-600 italic">Esperando archivo...</p>}
-        {logs.map((log, i) => (<div key={i} className="mb-1">{log}</div>))}
-      </div>
+                {/* GASTOS */}
+                <div className="flex flex-col gap-4">
+                    <div className="bg-rose-50 border border-rose-100 p-5 rounded-xl">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="font-bold text-rose-800 flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5"/> Importar Gastos
+                            </h3>
+                            <button onClick={() => downloadTemplate('expenses')} className="text-xs flex items-center gap-1 bg-white border border-rose-200 text-rose-700 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition shadow-sm" title="Descargar ejemplo">
+                                <FileDown className="w-4 h-4"/> Plantilla
+                            </button>
+                        </div>
+                        <p className="text-xs text-rose-700/70 mb-4 h-10">
+                            Ejemplo: <strong>05/01/2025, JABON, 500</strong>. Las categorías nuevas se crean solas.
+                        </p>
+                        <label className="cursor-pointer block">
+                            <div className="border-2 border-dashed border-rose-300 rounded-lg p-6 text-center hover:bg-rose-100/50 transition bg-white">
+                                <span className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-rose-700 transition">Subir CSV Gastos</span>
+                                <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, 'gastos')} disabled={loading}/>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-8 bg-slate-900 text-slate-300 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs shadow-inner border border-slate-700">
+                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                    <span className="font-bold text-slate-400">LOG DE SISTEMA</span>
+                    {loading && <span className="flex items-center gap-2 text-yellow-400"><Loader2 className="animate-spin w-3 h-3"/> Procesando...</span>}
+                </div>
+                {logs.length === 0 && <p className="text-slate-600 italic">Esperando archivo...</p>}
+                {logs.map((log, i) => (<div key={i} className="mb-1">{log}</div>))}
+            </div>
+        </>
+      )}
     </div>
   );
 }
