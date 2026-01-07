@@ -19,7 +19,7 @@ const formatCompactMoney = (val: number) => {
   return `$${val}`;
 };
 
-// --- TOOLTIP PERSONALIZADO PRO ---
+// --- TOOLTIP PERSONALIZADO ---
 const CustomTooltip = ({ active, payload, label, prefix = '' }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -35,7 +35,7 @@ const CustomTooltip = ({ active, payload, label, prefix = '' }: any) => {
   return null;
 };
 
-// --- COMPONENTE AUXILIAR 1: Gráfica Vertical (Días) ---
+// --- COMPONENTE AUXILIAR 1: Gráfica Vertical ---
 const OperationalChart = ({ data, title, icon: Icon, color }: any) => {
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[340px] hover:shadow-md transition-shadow duration-300">
@@ -70,7 +70,7 @@ const OperationalChart = ({ data, title, icon: Icon, color }: any) => {
   );
 };
 
-// --- COMPONENTE AUXILIAR 2: Gráfica Horizontal (Categorías) ---
+// --- COMPONENTE AUXILIAR 2: Gráfica Horizontal ---
 const HorizontalChart = ({ data, color, barColor }: { data: any[], color: string, barColor: string }) => {
     const chartData = data.slice(0, 7); 
     return (
@@ -89,9 +89,7 @@ const HorizontalChart = ({ data, color, barColor }: { data: any[], color: string
 };
 
 export function ReportsView() {
-  // CAMBIO AQUÍ: Por defecto 'all' (Todo el año)
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
-  
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
   const [includeCaja, setIncludeCaja] = useState(false); 
@@ -150,7 +148,7 @@ export function ReportsView() {
 
     setFinancials({ income, expense, profit, margin });
 
-    // DÍAS DE SEMANA
+    // DÍAS
     const daysMap: Record<string, number> = { 'Mon':0, 'Tue':0, 'Wed':0, 'Thu':0, 'Fri':0, 'Sat':0, 'Sun':0 };
     transactions.filter(t => t.type === 'income').forEach(t => {
         const date = parseISO(t.date); 
@@ -180,7 +178,7 @@ export function ReportsView() {
         bestDayType: ['Sáb', 'Dom'].includes(maxDay) ? 'Fin de Semana' : 'Día de Semana'
     });
 
-    // TENDENCIA (CON LÓGICA DE DÍAS Y COLORES DE FIN DE SEMANA)
+    // TENDENCIA
     let trendMap = [];
     if (selectedMonth === 'all') {
         trendMap = months.map(m => ({ name: m.substring(0, 3), value: 0 }));
@@ -232,8 +230,8 @@ export function ReportsView() {
       
       {/* HEADER DE CONTROL */}
       <div className="flex flex-col xl:flex-row justify-between items-center mb-8 gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-            <h2 className="text-3xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight">
+        <div className="text-center xl:text-left">
+            <h2 className="text-3xl font-extrabold text-slate-800 flex items-center justify-center xl:justify-start gap-3 tracking-tight">
                 <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200">
                    <FileText className="w-6 h-6"/> 
                 </div>
@@ -242,45 +240,49 @@ export function ReportsView() {
             <p className="text-slate-500 font-medium mt-1 ml-1">Centro de análisis financiero y operativo.</p>
         </div>
         
-        <div className="flex flex-wrap gap-4 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
-            
-            <button 
-                onClick={() => setIncludeCaja(!includeCaja)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold border transition-all duration-300 ${
-                    includeCaja 
-                    ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-200' 
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                }`}
-            >
-                {includeCaja ? <ToggleRight className="w-5 h-5"/> : <ToggleLeft className="w-5 h-5"/>}
-                <span className="hidden sm:inline">{includeCaja ? 'Incluyendo Caja' : 'Sin Mov. Caja'}</span>
-            </button>
+        {/* CONTROLES GRID RESPONSIVE */}
+        <div className="w-full xl:w-auto bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-row gap-2 items-center">
+                
+                {/* BOTÓN CAJA - Adaptable */}
+                <button 
+                    onClick={() => setIncludeCaja(!includeCaja)}
+                    className={`h-11 w-full lg:w-auto flex items-center justify-center gap-2 px-4 rounded-lg text-sm font-bold border transition-all duration-300 ${
+                        includeCaja 
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-200' 
+                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
+                    }`}
+                >
+                    {includeCaja ? <ToggleRight className="w-5 h-5"/> : <ToggleLeft className="w-5 h-5"/>}
+                    <span>{includeCaja ? 'Con Caja' : 'Sin Caja'}</span>
+                </button>
 
-            <div className="h-8 w-px bg-slate-300 mx-1 hidden sm:block"></div>
+                {/* SELECTORES - Mismo alto que el botón */}
+                <select 
+                    value={selectedMonth} 
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    className="h-11 w-full lg:w-auto bg-white border border-slate-200 rounded-lg px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                >
+                    <option value="all">📅 Todo el Año</option>
+                    {months.map((m, i) => <option key={i} value={String(i)}>{m}</option>)}
+                </select>
 
-            <select 
-                value={selectedMonth} 
-                onChange={e => setSelectedMonth(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg py-2.5 px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-            >
-                <option value="all">📅 Todo el Año</option>
-                {months.map((m, i) => <option key={i} value={String(i)}>{m}</option>)}
-            </select>
-
-            <select 
-                value={selectedYear} 
-                onChange={e => setSelectedYear(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg py-2.5 px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-            >
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            
-            <button 
-                onClick={handlePrint}
-                className="bg-slate-900 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-bold hover:bg-slate-800 hover:shadow-lg transition-all active:scale-95"
-            >
-                <Printer className="w-4 h-4"/> <span className="hidden lg:inline">Exportar PDF</span>
-            </button>
+                <select 
+                    value={selectedYear} 
+                    onChange={e => setSelectedYear(parseInt(e.target.value))}
+                    className="h-11 w-full lg:w-auto bg-white border border-slate-200 rounded-lg px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                >
+                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                
+                {/* BOTÓN EXPORTAR - Col span en móvil para que quede centrado si sobra espacio */}
+                <button 
+                    onClick={handlePrint}
+                    className="h-11 w-full lg:w-auto sm:col-span-2 lg:col-span-1 bg-slate-900 text-white px-5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold hover:bg-slate-800 hover:shadow-lg transition-all active:scale-95"
+                >
+                    <Printer className="w-4 h-4"/> <span>Exportar</span>
+                </button>
+            </div>
         </div>
       </div>
 
@@ -426,13 +428,13 @@ export function ReportsView() {
                                 
                                 <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={50} animationDuration={2000}>
                                     {trendData.map((entry, index) => {
-                                        // LOGICA DE COLOR PARA FIN DE SEMANA (SÁBADO Y DOMINGO EN ÁMBAR)
+                                        // LOGICA DE COLOR PARA FIN DE SEMANA
                                         let fillColor = "url(#colorValue)";
                                         if (selectedMonth !== 'all') {
                                             const date = new Date(selectedYear, parseInt(selectedMonth), index + 1);
                                             const day = date.getDay();
-                                            if (day === 0 || day === 6) { // 0=Domingo, 6=Sábado
-                                                fillColor = "#f59e0b";
+                                            if (day === 0 || day === 6) { 
+                                                fillColor = "#f59e0b"; // ÁMBAR PARA FINDE
                                             }
                                         }
                                         return <Cell key={`cell-${index}`} fill={fillColor} />;
