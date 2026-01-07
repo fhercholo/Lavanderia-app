@@ -10,18 +10,17 @@ import {
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Camera 
 } from 'lucide-react'; 
 import { TransactionModal } from './TransactionModal';
-import { TicketScanner } from './TicketScanner'; // <--- IMPORTAMOS EL ESCÁNER
+// 1. IMPORTAMOS EL ESCÁNER
+import { TicketScanner } from './TicketScanner'; 
 
 export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  
-  // Estados para Modal y Escáner
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isAddOpen, setIsAddOpen] = useState(false); // Para agregar manual
-  const [editingTx, setEditingTx] = useState<any>(null);
 
+  // Estados para modales
+  const [isScannerOpen, setIsScannerOpen] = useState(false); // <--- ESTADO NUEVO PARA EL ESCÁNER
+  
   const years = Array.from({ length: 7 }, (_, i) => 2024 + i);
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -69,11 +68,11 @@ export function CalendarView() {
     return { income, expense, profit, count: dayTxs.length };
   };
 
-  // --- LÓGICA DEL ESCÁNER ---
+  // 2. FUNCIÓN PARA GUARDAR LO QUE ESCANEA EL TICKET
   const handleScanSuccess = async (scannedTxs: any[]) => {
     if (scannedTxs.length === 0) return;
     
-    // Guardar todos los movimientos en Supabase
+    // Guardar todos los movimientos en Supabase de golpe
     const { error } = await supabase.from('transactions').insert(scannedTxs);
     
     if (error) {
@@ -81,7 +80,7 @@ export function CalendarView() {
     } else {
         alert(`¡Éxito! Se registraron ${scannedTxs.length} movimientos del corte.`);
         setIsScannerOpen(false);
-        fetchMonthData(); // Recargar calendario
+        fetchMonthData(); // Recargar calendario para ver los cambios
     }
   };
 
@@ -123,11 +122,13 @@ export function CalendarView() {
             </button>
         </div>
         
+        {/* BOTONERA DERECHA */}
         <div className="flex gap-2 w-full sm:w-auto">
-            {/* BOTÓN ESCÁNER */}
+            
+            {/* 3. AQUÍ ESTÁ EL BOTÓN DE ESCANEAR QUE TE FALTABA */}
             <button 
                 onClick={() => setIsScannerOpen(true)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-700 transition"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800 transition"
             >
                 <Camera className="w-4 h-4" /> 
                 <span className="inline">Escanear Corte</span>
@@ -212,7 +213,7 @@ export function CalendarView() {
         })}
       </div>
 
-      {/* --- COMPONENTE ESCÁNER --- */}
+      {/* 4. AQUÍ SE MUESTRA EL COMPONENTE DE ESCÁNER */}
       {isScannerOpen && (
         <TicketScanner 
           onScanComplete={handleScanSuccess} 
@@ -220,7 +221,7 @@ export function CalendarView() {
         />
       )}
 
-      {/* MODAL DETALLE DÍA */}
+      {/* MODAL DETALLE DÍA (Mantenemos tu lógica original) */}
       {selectedDay && (
         <DayDetailModal 
           date={selectedDay} 
@@ -232,7 +233,7 @@ export function CalendarView() {
   );
 }
 
-// --- SUB-COMPONENTE MODAL ---
+// --- SUB-COMPONENTE MODAL (Tu código original sin cambios) ---
 function DayDetailModal({ date, onClose, onUpdate }: { date: Date, onClose: () => void, onUpdate: () => void }) {
   const [txs, setTxs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
