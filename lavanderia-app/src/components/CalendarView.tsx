@@ -7,14 +7,20 @@ import {
 import { es } from 'date-fns/locale';
 import { 
   Plus, Trash2, X, Edit2, 
-  TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight 
+  TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Camera 
 } from 'lucide-react'; 
 import { TransactionModal } from './TransactionModal';
+import { TicketScanner } from './TicketScanner'; // <--- IMPORTAMOS EL ESCÁNER
 
 export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  
+  // Estados para Modal y Escáner
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false); // Para agregar manual
+  const [editingTx, setEditingTx] = useState<any>(null);
 
   const years = Array.from({ length: 7 }, (_, i) => 2024 + i);
   const months = [
@@ -63,11 +69,26 @@ export function CalendarView() {
     return { income, expense, profit, count: dayTxs.length };
   };
 
-  // Formato súper compacto para celular
+  // --- LÓGICA DEL ESCÁNER ---
+  const handleScanSuccess = async (scannedTxs: any[]) => {
+    if (scannedTxs.length === 0) return;
+    
+    // Guardar todos los movimientos en Supabase
+    const { error } = await supabase.from('transactions').insert(scannedTxs);
+    
+    if (error) {
+        alert('Error al guardar movimientos: ' + error.message);
+    } else {
+        alert(`¡Éxito! Se registraron ${scannedTxs.length} movimientos del corte.`);
+        setIsScannerOpen(false);
+        fetchMonthData(); // Recargar calendario
+    }
+  };
+
   const formatCompact = (val: number) => 
     new Intl.NumberFormat('es-MX', { 
       style: 'currency', currency: 'MXN', maximumFractionDigits: 0,
-      notation: "compact" // Esto convierte 1500 en 1.5K si es necesario ahorrar espacio
+      notation: "compact" 
     }).format(val);
 
   return (
@@ -102,12 +123,23 @@ export function CalendarView() {
             </button>
         </div>
         
-        <button 
-            onClick={() => setCurrentDate(new Date())} 
-            className="hidden sm:block text-sm font-medium text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
-        >
-            Ir a Hoy
-        </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+            {/* BOTÓN ESCÁNER */}
+            <button 
+                onClick={() => setIsScannerOpen(true)}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-700 transition"
+            >
+                <Camera className="w-4 h-4" /> 
+                <span className="inline">Escanear Corte</span>
+            </button>
+
+            <button 
+                onClick={() => setCurrentDate(new Date())} 
+                className="hidden sm:block text-sm font-medium text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
+            >
+                Ir a Hoy
+            </button>
+        </div>
       </div>
 
       {/* GRID (Días de la semana) */}
@@ -131,63 +163,44 @@ export function CalendarView() {
             <div 
               key={day.toISOString()}
               onClick={() => setSelectedDay(day)}
-              // Altura dinámica: 70px en movil, 100px en PC
               className={`
                 relative p-1 sm:p-2 rounded-lg sm:rounded-xl border cursor-pointer transition-all flex flex-col min-h-[70px] sm:min-h-[100px] group
                 ${isToday ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300' : 'bg-white border-slate-200 active:bg-slate-50 sm:hover:border-blue-400 sm:hover:shadow-md'}
                 ${!isSameMonth(day, currentDate) ? 'opacity-40 bg-slate-50' : ''}
               `}
             >
-              {/* Encabezado de la celda */}
               <div className="flex justify-between items-start mb-0.5 sm:mb-1">
                  <span className={`text-[10px] sm:text-sm font-bold w-5 h-5 sm:w-7 sm:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-700 sm:group-hover:bg-slate-100'}`}>
                     {format(day, 'd')}
                  </span>
                  
                  {hasActivity && (
-                    <div className="hidden sm:block"> {/* Icono solo en PC para no ensuciar el movil */}
-                        {isProfit ? (
-                            <TrendingUp className="w-4 h-4 text-emerald-600" />
-                        ) : (
-                            <TrendingDown className="w-4 h-4 text-rose-600" />
-                        )}
+                    <div className="hidden sm:block">
+                        {isProfit ? <TrendingUp className="w-4 h-4 text-emerald-600" /> : <TrendingDown className="w-4 h-4 text-rose-600" />}
                     </div>
                  )}
               </div>
               
-              {/* Contenido (Ingresos/Gastos) */}
               {hasActivity ? (
                 <div className="flex flex-col gap-0.5 mt-auto text-[9px] sm:text-[11px] leading-tight">
-                    
-                    {/* Ingresos */}
                     {summary.income > 0 && (
                         <div className="flex justify-end sm:justify-between text-emerald-700 font-medium">
-                            {/* "Ing:" solo visible en PC (sm) */}
-                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal">
-                                <ArrowUpRight className="w-3 h-3"/> Ing:
-                            </span>
+                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal"><ArrowUpRight className="w-3 h-3"/> Ing:</span>
                             <span>{formatCompact(summary.income)}</span>
                         </div>
                     )}
-
-                    {/* Gastos */}
                     {summary.expense > 0 && (
                         <div className="flex justify-end sm:justify-between text-rose-700 font-medium">
-                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal">
-                                <ArrowDownRight className="w-3 h-3"/> Gas:
-                            </span>
+                            <span className="hidden sm:flex items-center gap-1 text-slate-400 font-normal"><ArrowDownRight className="w-3 h-3"/> Gas:</span>
                             <span>-{formatCompact(summary.expense)}</span>
                         </div>
                     )}
-
-                    {/* Total (visible siempre, pero simplificado en movil) */}
                     <div className={`flex justify-end sm:justify-between items-center border-t border-slate-100 pt-0.5 mt-0.5 font-bold ${isProfit ? 'text-slate-800' : 'text-slate-800'}`}>
                         <span className="hidden sm:inline">Total:</span>
                         <span className={isProfit ? 'text-blue-700' : 'text-rose-700'}>
                             {formatCompact(summary.profit)}
                         </span>
                     </div>
-
                 </div>
               ) : (
                 <div className="flex-1 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-20 transition-opacity">
@@ -199,7 +212,15 @@ export function CalendarView() {
         })}
       </div>
 
-      {/* MODAL */}
+      {/* --- COMPONENTE ESCÁNER --- */}
+      {isScannerOpen && (
+        <TicketScanner 
+          onScanComplete={handleScanSuccess} 
+          onClose={() => setIsScannerOpen(false)} 
+        />
+      )}
+
+      {/* MODAL DETALLE DÍA */}
       {selectedDay && (
         <DayDetailModal 
           date={selectedDay} 
