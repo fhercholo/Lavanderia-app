@@ -366,12 +366,11 @@ export function CalendarView() {
       </div>
 
       {/* MODALES */}
-      {/* @ts-ignore */}
       <TransactionModal 
         isOpen={isAddOpen} 
         onClose={() => { setIsAddOpen(false); setEditingTx(null); }} 
         onSuccess={fetchMonthData} 
-        initialData={editingTx} 
+        {...({ initialData: editingTx } as any)}
         defaultDate={format(selectedDay, 'yyyy-MM-dd')}
       />
       

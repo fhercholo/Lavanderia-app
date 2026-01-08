@@ -5,10 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import { 
   FileText, TrendingUp, TrendingDown, CalendarRange, Wallet, BarChart3, Printer, 
   ToggleLeft, ToggleRight, ArrowUpCircle, ArrowDownCircle, PieChart, Activity, 
-  Table2, Search, Trash2, Download, Pencil, X, Save, Filter, Sigma, MapPin, Phone, Building2, Info
+  Table2, Search, Trash2, Download, Pencil, X, Save, Building2, MapPin, Phone, Info
 } from 'lucide-react';
 import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, Cell, ReferenceLine 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, AreaChart, Area, ReferenceLine, Label 
 } from 'recharts';
 import { startOfMonth, endOfMonth, format, startOfYear, endOfYear, parseISO } from 'date-fns';
 
@@ -22,14 +22,21 @@ const formatCompactMoney = (val: number) => {
   return `$${val}`;
 };
 
-// Tooltip Gráficas (Pantalla)
+// COLORES ESTÁNDAR
+const COLORS = {
+  income: '#2563eb', // Blue-600
+  expense: '#e11d48', // Rose-600
+  balance: '#4f46e5', // Indigo-600
+};
+
+// Tooltip Gráficas
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-800/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50">
+      <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50">
         <p className="font-bold mb-1 opacity-70 uppercase tracking-wider">{label}</p>
         <p className="text-base font-bold flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-white"></span>
+          <span className="w-2 h-2 rounded-full shadow-[0_0_10px_currentColor]" style={{ backgroundColor: payload[0].color || payload[0].fill }}></span>
           {formatMoney(payload[0].value)}
         </p>
       </div>
@@ -38,26 +45,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-// --- COMPONENTE 1: GRÁFICA OPERATIVA (DÍAS) ---
-const OperationalChart = ({ data, title, subtitle, icon: Icon, color, id, printDesc }: any) => {
+// --- COMPONENTE 1: GRÁFICA OPERATIVA ---
+const OperationalChart = ({ data, title, subtitle, icon: Icon, colorKey, id, printDesc }: any) => {
   const total = data.reduce((acc: number, curr: any) => acc + curr.value, 0);
   const average = total / (data.length || 1);
-  
-  // Encontrar el mejor día
-  let maxVal = 0;
-  let maxDay = '-';
-  data.forEach((d: any) => {
-      if(d.value > maxVal) { maxVal = d.value; maxDay = d.name; }
-  });
+  const maxVal = data.length > 0 ? Math.max(...data.map((d: any) => d.value)) : 0;
 
-  const mainColor = color === 'blue' ? '#3b82f6' : '#f59e0b'; 
-  const lightColor = color === 'blue' ? '#eff6ff' : '#fffbeb'; 
-  const textColor = color === 'blue' ? 'text-blue-600' : 'text-amber-600';
+  const mainColor = colorKey === 'income' ? COLORS.income : COLORS.expense; 
+  const lightColor = colorKey === 'income' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600';
+  const textColor = colorKey === 'income' ? 'text-blue-600' : 'text-amber-600';
 
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-lg shadow-slate-100/50 flex flex-col h-[450px] print:h-auto print:border-slate-300 print:shadow-none print:break-inside-avoid">
-      
-      {/* HEADER */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex gap-3">
             <div className={`p-3 rounded-2xl ${lightColor} ${textColor} shadow-inner print:hidden`}>
@@ -74,7 +73,6 @@ const OperationalChart = ({ data, title, subtitle, icon: Icon, color, id, printD
         </div>
       </div>
 
-      {/* CHART */}
       <div className="flex-1 w-full min-h-0 relative">
         <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
@@ -84,27 +82,36 @@ const OperationalChart = ({ data, title, subtitle, icon: Icon, color, id, printD
                         <stop offset="100%" stopColor={mainColor} stopOpacity={0.2}/>
                     </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" printStroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 700 }} dy={10} printTick={{ fill: '#000' }}/>
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `$${v/1000}k`} printTick={{ fill: '#000' }}/>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 700 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-                <ReferenceLine y={average} stroke={mainColor} strokeDasharray="4 4" strokeOpacity={0.5} printStroke="#000">
-                    <LabelList position="right" value="Prom." fill={mainColor} fontSize={10} fontWeight={700} printFill="#000"/>
+                
+                <ReferenceLine y={average} stroke={mainColor} strokeDasharray="4 4" strokeOpacity={0.6}>
+                    <Label 
+                        value={`Prom: ${formatCompactMoney(average)}`} 
+                        position="insideTopRight" 
+                        fill={mainColor} 
+                        fontSize={11} 
+                        fontWeight={800}
+                        offset={10}
+                        style={{ textShadow: '0px 0px 4px white' }} 
+                    />
                 </ReferenceLine>
-                <Bar dataKey="value" radius={[8, 8, 0, 0]} animationDuration={1500} maxBarSize={50} fill={`url(#gradient-${id})`} printFill={mainColor}>
-                    <LabelList dataKey="value" position="top" formatter={formatCompactMoney} style={{ fontSize: '11px', fill: '#475569', fontWeight: 'bold' }} />
+
+                <Bar dataKey="value" radius={[8, 8, 0, 0]} animationDuration={1500} maxBarSize={50} fill={`url(#gradient-${id})`}>
+                    <LabelList dataKey="value" position="top" formatter={(val: any) => formatCompactMoney(val)} style={{ fontSize: '11px', fill: '#475569', fontWeight: 'bold' }} />
                 </Bar>
             </BarChart>
         </ResponsiveContainer>
       </div>
       
-      {/* FOOTER ANALYSIS */}
       <div className="mt-4 pt-3 border-t border-slate-50 bg-slate-50/50 -mx-6 -mb-6 px-6 py-4 rounded-b-3xl print:bg-transparent print:border-slate-300 print:mt-2 print:pt-2">
           <div className="flex items-start gap-2">
              <Info className="w-4 h-4 text-slate-400 mt-0.5 shrink-0 print:hidden"/>
              <p className="text-xs text-slate-500 leading-relaxed text-justify print:text-black">
                 <span className="print:hidden">Análisis:</span> {printDesc} El promedio diario es <strong>{formatMoney(average)}</strong>. 
-                Pico máximo: <strong>{maxDay}</strong> ({formatMoney(maxVal)}).
+                Pico máximo: <strong>{maxVal > 0 ? formatMoney(maxVal) : '$0'}</strong>.
              </p>
           </div>
       </div>
@@ -112,9 +119,8 @@ const OperationalChart = ({ data, title, subtitle, icon: Icon, color, id, printD
   );
 };
 
-// --- COMPONENTE 2: GRÁFICA CATEGORÍAS (AHORA CON ANÁLISIS) ---
+// --- COMPONENTE 2: GRÁFICA CATEGORÍAS ---
 const CategoryChart = ({ data, title, subtitle, icon: Icon, color }: any) => {
-    // Cálculos
     const total = data.reduce((acc: number, curr: any) => acc + curr.value, 0);
     const topCategory = data.length > 0 ? data[0] : { name: '-', value: 0 };
     const topPercentage = total > 0 ? ((topCategory.value / total) * 100).toFixed(1) : 0;
@@ -124,7 +130,6 @@ const CategoryChart = ({ data, title, subtitle, icon: Icon, color }: any) => {
 
     return (
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-lg shadow-slate-100/50 flex flex-col h-[450px] print:h-auto print:border-slate-300 print:shadow-none print:break-inside-avoid">
-            {/* HEADER */}
             <div className="flex justify-between items-start mb-2">
                 <div className="flex gap-3">
                     <div className={`p-3 rounded-2xl ${lightColor} shadow-inner print:hidden`}>
@@ -137,17 +142,16 @@ const CategoryChart = ({ data, title, subtitle, icon: Icon, color }: any) => {
                 </div>
             </div>
 
-            {/* CHART */}
             <div className="flex-1 w-full min-h-0">
                 {data.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart layout="vertical" data={data.slice(0, 7)} margin={{ top: 5, right: 60, left: 10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" printStroke="#e2e8f0" />
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
                             <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={false} tickLine={false} printTick={{ fill: '#000' }}/>
+                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={false} tickLine={false} />
                             <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-                            <Bar dataKey="value" fill={barColor} radius={[0, 6, 6, 0]} barSize={24} animationDuration={1500} background={{ fill: '#f8fafc', radius: [0, 6, 6, 0] }}>
-                                <LabelList dataKey="value" position="right" formatter={(val: number) => `$${val.toLocaleString()}`} style={{ fontSize: '11px', fill: '#64748b', fontWeight: 'bold' }} />
+                            <Bar dataKey="value" fill={barColor} radius={[0, 6, 6, 0] as any} barSize={24} animationDuration={1500} background={{ fill: '#f8fafc', radius: [0, 6, 6, 0] as any }}>
+                                <LabelList dataKey="value" position="right" formatter={(val: any) => `$${val.toLocaleString()}`} style={{ fontSize: '11px', fill: '#64748b', fontWeight: 'bold' }} />
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
@@ -159,7 +163,6 @@ const CategoryChart = ({ data, title, subtitle, icon: Icon, color }: any) => {
                 )}
             </div>
 
-            {/* FOOTER ANALYSIS */}
             <div className="mt-4 pt-3 border-t border-slate-50 bg-slate-50/50 -mx-6 -mb-6 px-6 py-4 rounded-b-3xl print:bg-transparent print:border-slate-300 print:mt-2 print:pt-2">
                 <div className="flex items-start gap-2">
                     <Activity className="w-4 h-4 text-slate-400 mt-0.5 shrink-0 print:hidden"/>
@@ -176,7 +179,6 @@ export function ReportsView() {
   const { isAdmin } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [loading, setLoading] = useState(false);
   const [includeCaja, setIncludeCaja] = useState(false); 
   
   const [bizInfo, setBizInfo] = useState({ name: '', address: '', phone: '', logo_url: '' });
@@ -223,7 +225,7 @@ export function ReportsView() {
   };
 
   const fetchReportData = async () => {
-    setLoading(true);
+    // loading eliminado aquí
     let startDate, endDate;
 
     if (selectedMonth === 'all') {
@@ -273,7 +275,7 @@ export function ReportsView() {
         { name: 'Sáb', value: daysMap['Sat'] }, { name: 'Dom', value: daysMap['Sun'] }
     ]);
 
-    let trendMap = [];
+    let trendMap: any[] = [];
     if (selectedMonth === 'all') {
         trendMap = months.map(m => ({ name: m.substring(0, 3), value: 0 }));
         transactions.forEach(t => {
@@ -305,8 +307,8 @@ export function ReportsView() {
 
     setIncomeCategoryData(Object.entries(incomeCats).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
     setExpenseCategoryData(Object.entries(expenseCats).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
-
-    setLoading(false);
+    
+    // loading eliminado aquí
   };
 
   const handleDelete = async (id: number) => {
@@ -328,8 +330,6 @@ export function ReportsView() {
         }).eq('id', editingTransaction.id);
       if (!error) { setEditingTransaction(null); fetchReportData(); }
   };
-
-  const handleEditClick = (transaction: any) => { setEditingTransaction({ ...transaction }); };
 
   const handleExport = () => {
     const headers = ["Fecha", "Tipo", "Categoria", "Descripcion", "Monto"];
@@ -357,7 +357,6 @@ export function ReportsView() {
   const reportTitle = selectedMonth === 'all' ? `Análisis Anual ${selectedYear}` : `Reporte ${months[parseInt(selectedMonth)]} ${selectedYear}`;
   const chartTitle = selectedMonth === 'all' ? 'Tendencia Anual' : 'Flujo Diario';
 
-  // Cálculos para el análisis del gráfico de tendencia
   const maxTrendVal = Math.max(...trendData.map((d: any) => d.value));
   const maxTrendLabel = trendData.find((d: any) => d.value === maxTrendVal)?.name || '-';
 
@@ -465,18 +464,18 @@ export function ReportsView() {
                         <OperationalChart 
                             data={weekDayData} 
                             title="Días Laborales (Lun - Vie)" 
-                            subtitle="Días Laborales"
+                            subtitle="Ingresos por día"
                             icon={Wallet} 
-                            color="blue" 
+                            colorKey="income" 
                             id="1" 
                             printDesc="Distribución de ingresos durante la semana laboral."
                         />
                         <OperationalChart 
                             data={weekendData} 
                             title="Fin de Semana (Sáb - Dom)" 
-                            subtitle="Fin de Semana"
+                            subtitle="Ingresos fin de semana"
                             icon={CalendarRange} 
-                            color="amber" 
+                            colorKey="expense" 
                             id="2"
                             printDesc="Comportamiento de ventas durante el fin de semana."
                         />
@@ -495,8 +494,8 @@ export function ReportsView() {
                 </div>
             </div>
 
-            {/* DESGLOSE (PANTALLA) */}
-            <div className="pt-2 print-hidden">
+            {/* DESGLOSE (Solo Pantalla) */}
+            <div className="print-hidden mb-8">
                 <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 pl-1"><PieChart className="text-indigo-500 w-5 h-5"/> Desglose Financiero</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <CategoryChart data={incomeCategoryData} title="Origen de Ingresos" subtitle="Categorías Principales" icon={ArrowUpCircle} color="green" />
@@ -514,35 +513,25 @@ export function ReportsView() {
                 </div>
                 <div className="h-[300px] w-full print:h-[220px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={trendData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                        <AreaChart data={trendData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
                             <defs>
-                                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.3}/>
+                                <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor={COLORS.income} stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor={COLORS.income} stopOpacity={0}/>
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" printStroke="#e2e8f0"/>
-                            <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} printTick={{ fill: '#000' }}/>
-                            <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v)=>`$${v/1000}k`} printTick={{ fill: '#000' }}/>
-                            <Tooltip content={<CustomTooltip />} cursor={{fill: '#ecfdf5'}} />
-                            <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={50} animationDuration={2000} printFill="#333">
-                                {trendData.map((entry, index) => {
-                                    let fillColor = "url(#colorValue)";
-                                    if (selectedMonth !== 'all') {
-                                        const date = new Date(selectedYear, parseInt(selectedMonth), index + 1);
-                                        const day = date.getDay();
-                                        if (day === 0 || day === 6) fillColor = "#f59e0b";
-                                    }
-                                    return <Cell key={`cell-${index}`} fill={fillColor} />;
-                                })}
-                            </Bar>
-                        </BarChart>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} tick={{fill: '#94a3b8'}}/>
+                            <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v)=>`$${v/1000}k`} tick={{fill: '#94a3b8'}}/>
+                            <Tooltip content={<CustomTooltip />} />
+                            <Area type="monotone" dataKey="value" stroke={COLORS.income} strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" />
+                        </AreaChart>
                     </ResponsiveContainer>
                 </div>
-                {/* FOOTER ANALYSIS TENDENCIA */}
                 <div className="mt-4 pt-3 border-t border-slate-50 print:border-slate-300">
                     <p className="text-xs text-slate-500 leading-relaxed text-center print:text-black">
-                        El punto más alto de ingresos en este periodo se registró en <strong>{maxTrendLabel}</strong>. Los picos en color ámbar (si existen) representan fines de semana.
+                        <Info className="w-3 h-3 inline mr-1 mb-0.5"/>
+                        El punto más alto de ingresos se registró en <strong>{maxTrendLabel}</strong> ({formatMoney(maxTrendVal)}).
                     </p>
                 </div>
             </div>
@@ -564,6 +553,7 @@ export function ReportsView() {
                      <button onClick={handleExport} className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold hover:bg-slate-50 transition"><Download className="w-4 h-4"/> Exportar Datos</button>
                  </div>
 
+                 {/* TABLA PRINCIPAL */}
                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden print:border-slate-300 print:shadow-none print:w-full">
                     <div className="overflow-x-auto print:overflow-visible">
                         <table className="w-full text-sm text-left print-table">
@@ -583,8 +573,8 @@ export function ReportsView() {
                                         <td className="px-6 py-3 font-medium print:px-2 print:py-1 print:text-black">{format(new Date(t.date + 'T00:00:00'), 'dd/MM/yyyy')}</td>
                                         <td className="px-6 py-3 print:px-2 print:py-1"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold border border-slate-200 print:border-none print:bg-transparent print:p-0 print:text-black">{t.category}</span></td>
                                         <td className="px-6 py-3 text-slate-500 max-w-xs truncate print:px-2 print:py-1 print:text-black print:whitespace-normal">{t.description || '-'}</td>
-                                        <td className="px-6 py-3 text-center print:px-2 print:py-1">{t.type === 'income' ? <span className="text-emerald-600 font-bold print:text-black">Ingreso</span> : <span className="text-rose-600 font-bold print:text-black">Gasto</span>}</td>
-                                        <td className={`px-6 py-3 text-right font-bold font-mono print:px-2 print:py-1 ${t.type === 'income' ? 'text-emerald-600 print:text-black' : 'text-rose-600 print:text-black'}`}>{t.type === 'expense' ? '-' : ''}{formatMoney(t.amount)}</td>
+                                        <td className="px-6 py-3 text-center print:px-2 print:py-1">{t.type === 'income' ? <span className="text-blue-600 font-bold print:text-black">Ingreso</span> : <span className="text-rose-600 font-bold print:text-black">Gasto</span>}</td>
+                                        <td className={`px-6 py-3 text-right font-bold font-mono print:px-2 print:py-1 ${t.type === 'income' ? 'text-blue-600 print:text-black' : 'text-rose-600 print:text-black'}`}>{t.type === 'expense' ? '-' : ''}{formatMoney(t.amount)}</td>
                                         {isAdmin && <td className="px-6 py-3 text-center flex justify-center gap-2 print-hidden"><button onClick={() => setEditingTransaction(t)} className="p-2 text-blue-400 hover:bg-blue-50 rounded-full"><Pencil className="w-4 h-4"/></button><button onClick={() => handleDelete(t.id)} className="p-2 text-rose-400 hover:bg-rose-50 rounded-full"><Trash2 className="w-4 h-4"/></button></td>}
                                     </tr>
                                 ))}
@@ -596,9 +586,9 @@ export function ReportsView() {
                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg mt-4 flex flex-col sm:flex-row justify-between items-center text-sm gap-4 print:bg-white print:border-t-2 print:border-black print:rounded-none print:mt-2 print:break-inside-avoid">
                     <span className="text-slate-500 print:text-black">Registros visibles: <strong>{filteredTransactions.length}</strong></span>
                     <div className="flex gap-4 sm:gap-6 flex-wrap justify-center">
-                        <span className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 print:bg-transparent print:border-none print:text-black print:p-0">Ingresos: {formatMoney(totalVisibleIncome)}</span>
+                        <span className="text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 print:bg-transparent print:border-none print:text-black print:p-0">Ingresos: {formatMoney(totalVisibleIncome)}</span>
                         <span className="text-rose-600 font-bold bg-rose-50 px-3 py-1 rounded-lg border border-rose-100 print:bg-transparent print:border-none print:text-black print:p-0">Gastos: {formatMoney(totalVisibleExpense)}</span>
-                        <span className={`font-black px-3 py-1 rounded-lg border print:bg-transparent print:border-none print:text-black print:p-0 ${totalVisibleBalance >= 0 ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>Balance: {formatMoney(totalVisibleBalance)}</span>
+                        <span className={`font-black px-3 py-1 rounded-lg border print:bg-transparent print:border-none print:text-black print:p-0 ${totalVisibleBalance >= 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>Balance: {formatMoney(totalVisibleBalance)}</span>
                     </div>
                  </div>
             </div>
