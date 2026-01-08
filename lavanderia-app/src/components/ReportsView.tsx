@@ -1,32 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { useReactToPrint } from 'react-to-print';
+import { useAuth } from '../context/AuthContext';
 import { 
-  FileText, TrendingUp, TrendingDown, CalendarRange, Wallet, BarChart3, Printer, ToggleLeft, ToggleRight, ArrowUpCircle, ArrowDownCircle, PieChart, Activity
+  FileText, TrendingUp, TrendingDown, CalendarRange, Wallet, BarChart3, Printer, 
+  ToggleLeft, ToggleRight, ArrowUpCircle, ArrowDownCircle, PieChart, Activity, 
+  Table2, Search, Trash2, Download, Pencil, X, Save, Filter, Sigma, MapPin, Phone, Building2, Info
 } from 'lucide-react';
 import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, Cell 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, Cell, ReferenceLine 
 } from 'recharts';
 import { startOfMonth, endOfMonth, format, startOfYear, endOfYear, parseISO } from 'date-fns';
 
-// --- HELPERS DE FORMATO ---
+// --- HELPERS ---
 const formatMoney = (val: number) => 
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(val);
 
 const formatCompactMoney = (val: number) => {
   if (val === 0) return '';
-  if (val >= 1000) return `$${(val / 1000).toFixed(1)}k`; // $1.5k
+  if (val >= 1000) return `$${(val / 1000).toFixed(1)}k`; 
   return `$${val}`;
 };
 
-// --- TOOLTIP PERSONALIZADO ---
-const CustomTooltip = ({ active, payload, label, prefix = '' }: any) => {
+// Tooltip Gráficas (Pantalla)
+const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-800/90 backdrop-blur-sm text-white p-3 rounded-lg shadow-xl border border-slate-700 text-xs z-50">
-        <p className="font-bold mb-1 opacity-70">{label}</p>
+      <div className="bg-slate-800/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50">
+        <p className="font-bold mb-1 opacity-70 uppercase tracking-wider">{label}</p>
         <p className="text-base font-bold flex items-center gap-2">
-          {prefix && <span className="text-slate-400 font-normal">{prefix}:</span>}
+          <span className="w-2 h-2 rounded-full bg-white"></span>
           {formatMoney(payload[0].value)}
         </p>
       </div>
@@ -35,86 +38,189 @@ const CustomTooltip = ({ active, payload, label, prefix = '' }: any) => {
   return null;
 };
 
-// --- COMPONENTE AUXILIAR 1: Gráfica Vertical ---
-const OperationalChart = ({ data, title, icon: Icon, color }: any) => {
+// --- COMPONENTE 1: GRÁFICA OPERATIVA (DÍAS) ---
+const OperationalChart = ({ data, title, subtitle, icon: Icon, color, id, printDesc }: any) => {
+  const total = data.reduce((acc: number, curr: any) => acc + curr.value, 0);
+  const average = total / (data.length || 1);
+  
+  // Encontrar el mejor día
+  let maxVal = 0;
+  let maxDay = '-';
+  data.forEach((d: any) => {
+      if(d.value > maxVal) { maxVal = d.value; maxDay = d.name; }
+  });
+
+  const mainColor = color === 'blue' ? '#3b82f6' : '#f59e0b'; 
+  const lightColor = color === 'blue' ? '#eff6ff' : '#fffbeb'; 
+  const textColor = color === 'blue' ? 'text-blue-600' : 'text-amber-600';
+
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[340px] hover:shadow-md transition-shadow duration-300">
-      <div className="flex items-center gap-3 mb-6">
-        <div className={`p-2 rounded-lg ${color === '#3b82f6' ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
-            <Icon className="w-5 h-5"/>
+    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-lg shadow-slate-100/50 flex flex-col h-[450px] print:h-auto print:border-slate-300 print:shadow-none print:break-inside-avoid">
+      
+      {/* HEADER */}
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex gap-3">
+            <div className={`p-3 rounded-2xl ${lightColor} ${textColor} shadow-inner print:hidden`}>
+                <Icon className="w-6 h-6"/>
+            </div>
+            <div>
+                <h3 className="font-extrabold text-slate-800 text-base print:text-black">{title}</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5 print:text-slate-600">{subtitle}</p>
+            </div>
         </div>
-        <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider">{title}</h3>
+        <div className="text-right">
+            <p className="text-2xl font-black text-slate-800 tracking-tight print:text-black">{formatCompactMoney(total)}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Total</p>
+        </div>
       </div>
-      <div className="flex-1 w-full min-h-0">
+
+      {/* CHART */}
+      <div className="flex-1 w-full min-h-0 relative">
         <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(v) => `$${v/1000}k`}/>
-                <Tooltip content={<CustomTooltip prefix="Venta" />} cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={1500} maxBarSize={50}>
-                    {data.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={color || '#3b82f6'} />
-                    ))}
-                    <LabelList 
-                        dataKey="value" 
-                        position="top" 
-                        formatter={formatCompactMoney} 
-                        style={{ fontSize: '10px', fill: '#64748b', fontWeight: 'bold' }} 
-                    />
+                <defs>
+                    <linearGradient id={`gradient-${id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={mainColor} stopOpacity={1}/>
+                        <stop offset="100%" stopColor={mainColor} stopOpacity={0.2}/>
+                    </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" printStroke="#e2e8f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 700 }} dy={10} printTick={{ fill: '#000' }}/>
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `$${v/1000}k`} printTick={{ fill: '#000' }}/>
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+                <ReferenceLine y={average} stroke={mainColor} strokeDasharray="4 4" strokeOpacity={0.5} printStroke="#000">
+                    <LabelList position="right" value="Prom." fill={mainColor} fontSize={10} fontWeight={700} printFill="#000"/>
+                </ReferenceLine>
+                <Bar dataKey="value" radius={[8, 8, 0, 0]} animationDuration={1500} maxBarSize={50} fill={`url(#gradient-${id})`} printFill={mainColor}>
+                    <LabelList dataKey="value" position="top" formatter={formatCompactMoney} style={{ fontSize: '11px', fill: '#475569', fontWeight: 'bold' }} />
                 </Bar>
             </BarChart>
         </ResponsiveContainer>
+      </div>
+      
+      {/* FOOTER ANALYSIS */}
+      <div className="mt-4 pt-3 border-t border-slate-50 bg-slate-50/50 -mx-6 -mb-6 px-6 py-4 rounded-b-3xl print:bg-transparent print:border-slate-300 print:mt-2 print:pt-2">
+          <div className="flex items-start gap-2">
+             <Info className="w-4 h-4 text-slate-400 mt-0.5 shrink-0 print:hidden"/>
+             <p className="text-xs text-slate-500 leading-relaxed text-justify print:text-black">
+                <span className="print:hidden">Análisis:</span> {printDesc} El promedio diario es <strong>{formatMoney(average)}</strong>. 
+                Pico máximo: <strong>{maxDay}</strong> ({formatMoney(maxVal)}).
+             </p>
+          </div>
       </div>
     </div>
   );
 };
 
-// --- COMPONENTE AUXILIAR 2: Gráfica Horizontal ---
-const HorizontalChart = ({ data, color, barColor }: { data: any[], color: string, barColor: string }) => {
-    const chartData = data.slice(0, 7); 
+// --- COMPONENTE 2: GRÁFICA CATEGORÍAS (AHORA CON ANÁLISIS) ---
+const CategoryChart = ({ data, title, subtitle, icon: Icon, color }: any) => {
+    // Cálculos
+    const total = data.reduce((acc: number, curr: any) => acc + curr.value, 0);
+    const topCategory = data.length > 0 ? data[0] : { name: '-', value: 0 };
+    const topPercentage = total > 0 ? ((topCategory.value / total) * 100).toFixed(1) : 0;
+
+    const barColor = color === 'green' ? '#10b981' : '#ef4444';
+    const lightColor = color === 'green' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600';
+
     return (
-        <ResponsiveContainer width="100%" height="100%">
-            <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 50, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip prefix="Total" />} cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="value" fill={barColor} radius={[0, 6, 6, 0]} barSize={24} animationDuration={1500} background={{ fill: '#f1f5f9', radius: [0, 6, 6, 0] }}>
-                    <LabelList dataKey="value" position="right" formatter={(val: number) => `$${val.toLocaleString()}`} style={{ fontSize: '11px', fill: '#64748b', fontWeight: 'bold' }} />
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-lg shadow-slate-100/50 flex flex-col h-[450px] print:h-auto print:border-slate-300 print:shadow-none print:break-inside-avoid">
+            {/* HEADER */}
+            <div className="flex justify-between items-start mb-2">
+                <div className="flex gap-3">
+                    <div className={`p-3 rounded-2xl ${lightColor} shadow-inner print:hidden`}>
+                        <Icon className="w-6 h-6"/>
+                    </div>
+                    <div>
+                        <h3 className="font-extrabold text-slate-800 text-base print:text-black">{title}</h3>
+                        <p className="text-xs text-slate-400 font-medium mt-0.5 print:text-slate-600">{subtitle}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* CHART */}
+            <div className="flex-1 w-full min-h-0">
+                {data.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart layout="vertical" data={data.slice(0, 7)} margin={{ top: 5, right: 60, left: 10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" printStroke="#e2e8f0" />
+                            <XAxis type="number" hide />
+                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={false} tickLine={false} printTick={{ fill: '#000' }}/>
+                            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+                            <Bar dataKey="value" fill={barColor} radius={[0, 6, 6, 0]} barSize={24} animationDuration={1500} background={{ fill: '#f8fafc', radius: [0, 6, 6, 0] }}>
+                                <LabelList dataKey="value" position="right" formatter={(val: number) => `$${val.toLocaleString()}`} style={{ fontSize: '11px', fill: '#64748b', fontWeight: 'bold' }} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                        <FileText className="w-12 h-12 mb-2 opacity-20"/>
+                        <span className="text-sm font-medium">Sin datos registrados</span>
+                    </div>
+                )}
+            </div>
+
+            {/* FOOTER ANALYSIS */}
+            <div className="mt-4 pt-3 border-t border-slate-50 bg-slate-50/50 -mx-6 -mb-6 px-6 py-4 rounded-b-3xl print:bg-transparent print:border-slate-300 print:mt-2 print:pt-2">
+                <div className="flex items-start gap-2">
+                    <Activity className="w-4 h-4 text-slate-400 mt-0.5 shrink-0 print:hidden"/>
+                    <p className="text-xs text-slate-500 leading-relaxed text-justify print:text-black">
+                        La categoría principal es <strong>{topCategory.name}</strong>, representando el <strong>{topPercentage}%</strong> del total registrado.
+                    </p>
+                </div>
+            </div>
+        </div>
     );
 };
 
 export function ReportsView() {
+  const { isAdmin } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
   const [includeCaja, setIncludeCaja] = useState(false); 
+  
+  const [bizInfo, setBizInfo] = useState({ name: '', address: '', phone: '', logo_url: '' });
+  const [viewMode, setViewMode] = useState<'charts' | 'table'>('charts');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
 
+  const [editingTransaction, setEditingTransaction] = useState<any | null>(null);
+  const [categoriesList, setCategoriesList] = useState<any[]>([]);
+  const [rawTransactions, setRawTransactions] = useState<any[]>([]);
+  
+  // Estados para gráficas
   const [financials, setFinancials] = useState({ income: 0, expense: 0, profit: 0, margin: 0 });
-  const [dayStats, setDayStats] = useState({ bestDay: '', bestDayAmount: 0, bestDayType: '' });
   const [weekDayData, setWeekDayData] = useState<any[]>([]);
   const [weekendData, setWeekendData] = useState<any[]>([]);
   const [trendData, setTrendData] = useState<any[]>([]); 
-  
   const [incomeCategoryData, setIncomeCategoryData] = useState<any[]>([]);
   const [expenseCategoryData, setExpenseCategoryData] = useState<any[]>([]);
 
   const componentRef = useRef(null);
-  const handlePrint = useReactToPrint({ content: () => componentRef.current });
+  
+  const handlePrint = useReactToPrint({ 
+    contentRef: componentRef,
+    documentTitle: `Reporte_${selectedYear}_${selectedMonth}`,
+  });
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
-  const months = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ];
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
   useEffect(() => {
+    fetchBusinessInfo(); 
     fetchReportData();
+    fetchCategories(); 
   }, [selectedMonth, selectedYear, includeCaja]); 
+
+  const fetchBusinessInfo = async () => {
+      const { data } = await supabase.from('business_settings').select('*').single();
+      if(data) setBizInfo(data);
+  };
+
+  const fetchCategories = async () => {
+      const { data } = await supabase.from('categories').select('*').order('name');
+      if(data) setCategoriesList(data);
+  };
 
   const fetchReportData = async () => {
     setLoading(true);
@@ -133,13 +239,16 @@ export function ReportsView() {
       .from('transactions')
       .select('*')
       .gte('date', startDate)
-      .lte('date', endDate);
+      .lte('date', endDate)
+      .order('date', { ascending: false });
 
     if (!transactions) transactions = [];
 
     if (!includeCaja) {
         transactions = transactions.filter(t => t.category.toUpperCase() !== 'CAJA');
     }
+
+    setRawTransactions(transactions);
 
     const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
     const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
@@ -148,7 +257,6 @@ export function ReportsView() {
 
     setFinancials({ income, expense, profit, margin });
 
-    // DÍAS
     const daysMap: Record<string, number> = { 'Mon':0, 'Tue':0, 'Wed':0, 'Thu':0, 'Fri':0, 'Sat':0, 'Sun':0 };
     transactions.filter(t => t.type === 'income').forEach(t => {
         const date = parseISO(t.date); 
@@ -165,20 +273,6 @@ export function ReportsView() {
         { name: 'Sáb', value: daysMap['Sat'] }, { name: 'Dom', value: daysMap['Sun'] }
     ]);
 
-    // MEJOR DÍA
-    let maxVal = 0;
-    let maxDay = '';
-    const esDays: Record<string, string> = { 'Mon':'Lun', 'Tue':'Mar', 'Wed':'Mié', 'Thu':'Jue', 'Fri':'Vie', 'Sat':'Sáb', 'Sun':'Dom' };
-    Object.entries(daysMap).forEach(([key, val]) => {
-        if (val > maxVal) { maxVal = val; maxDay = esDays[key]; }
-    });
-    setDayStats({ 
-        bestDay: maxDay || '-', 
-        bestDayAmount: maxVal,
-        bestDayType: ['Sáb', 'Dom'].includes(maxDay) ? 'Fin de Semana' : 'Día de Semana'
-    });
-
-    // TENDENCIA
     let trendMap = [];
     if (selectedMonth === 'all') {
         trendMap = months.map(m => ({ name: m.substring(0, 3), value: 0 }));
@@ -201,10 +295,8 @@ export function ReportsView() {
     }
     setTrendData(trendMap);
 
-    // CATEGORÍAS
     const incomeCats: Record<string, number> = {};
     const expenseCats: Record<string, number> = {};
-
     transactions.forEach(t => {
         const amount = Number(t.amount);
         if (t.type === 'income') incomeCats[t.category] = (incomeCats[t.category] || 0) + amount;
@@ -217,255 +309,321 @@ export function ReportsView() {
     setLoading(false);
   };
 
-  const reportTitle = selectedMonth === 'all' 
-    ? `Análisis Anual Corporativo ${selectedYear}` 
-    : `Reporte Operativo Mensual • ${months[parseInt(selectedMonth)]} ${selectedYear}`;
+  const handleDelete = async (id: number) => {
+    if (!isAdmin) return;
+    if (!confirm('¿Borrar movimiento?')) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) fetchReportData();
+    else alert('Error al eliminar');
+  };
 
-  const chartTitle = selectedMonth === 'all' 
-    ? 'Tendencia Anual de Ingresos' 
-    : 'Comportamiento Diario de Ingresos';
+  const handleSaveEdit = async () => {
+      if(!editingTransaction) return;
+      const { error } = await supabase.from('transactions').update({
+            date: editingTransaction.date,
+            type: editingTransaction.type,
+            category: editingTransaction.category,
+            amount: editingTransaction.amount,
+            description: editingTransaction.description
+        }).eq('id', editingTransaction.id);
+      if (!error) { setEditingTransaction(null); fetchReportData(); }
+  };
+
+  const handleEditClick = (transaction: any) => { setEditingTransaction({ ...transaction }); };
+
+  const handleExport = () => {
+    const headers = ["Fecha", "Tipo", "Categoria", "Descripcion", "Monto"];
+    const rows = filteredTransactions.map(t => [t.date, t.type === 'income' ? 'Ingreso' : 'Gasto', t.category, `"${t.description || ''}"`, t.amount]);
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `reporte_${selectedYear}_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  const filteredTransactions = rawTransactions.filter(t => {
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = t.category?.toLowerCase().includes(searchLower) || t.description?.toLowerCase().includes(searchLower) || String(t.amount).includes(searchLower);
+    const matchesType = typeFilter === 'all' || t.type === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  const totalVisibleIncome = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalVisibleExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalVisibleBalance = totalVisibleIncome - totalVisibleExpense;
+
+  const reportTitle = selectedMonth === 'all' ? `Análisis Anual ${selectedYear}` : `Reporte ${months[parseInt(selectedMonth)]} ${selectedYear}`;
+  const chartTitle = selectedMonth === 'all' ? 'Tendencia Anual' : 'Flujo Diario';
+
+  // Cálculos para el análisis del gráfico de tendencia
+  const maxTrendVal = Math.max(...trendData.map((d: any) => d.value));
+  const maxTrendLabel = trendData.find((d: any) => d.value === maxTrendVal)?.name || '-';
 
   return (
-    <div className="animate-fade-in pb-10 max-w-7xl mx-auto font-sans">
+    <div className="animate-fade-in pb-10 max-w-7xl mx-auto font-sans relative">
       
+      <style type="text/css" media="print">
+        {`
+          @page { size: landscape; margin: 10mm; }
+          body { -webkit-print-color-adjust: exact; background-color: #fff; }
+          .print-hidden { display: none !important; }
+          .print-only { display: block !important; }
+          .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+          .print-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+          .print-break-inside-avoid { break-inside: avoid; }
+        `}
+      </style>
+
       {/* HEADER DE CONTROL */}
-      <div className="flex flex-col xl:flex-row justify-between items-center mb-8 gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div className="text-center xl:text-left">
-            <h2 className="text-3xl font-extrabold text-slate-800 flex items-center justify-center xl:justify-start gap-3 tracking-tight">
-                <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200">
-                   <FileText className="w-6 h-6"/> 
-                </div>
+      <div className="flex flex-col xl:flex-row justify-between items-center mb-6 gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 print-hidden">
+        <div>
+            <h2 className="text-3xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight">
+                <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200"><FileText className="w-6 h-6"/></div>
                 Reportes Inteligentes
             </h2>
-            <p className="text-slate-500 font-medium mt-1 ml-1">Centro de análisis financiero y operativo.</p>
+            <p className="text-slate-500 font-medium mt-1 ml-1">Centro de análisis financiero y auditoría.</p>
         </div>
-        
-        {/* CONTROLES GRID RESPONSIVE */}
-        <div className="w-full xl:w-auto bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-row gap-2 items-center">
-                
-                {/* BOTÓN CAJA - Adaptable */}
-                <button 
-                    onClick={() => setIncludeCaja(!includeCaja)}
-                    className={`h-11 w-full lg:w-auto flex items-center justify-center gap-2 px-4 rounded-lg text-sm font-bold border transition-all duration-300 ${
-                        includeCaja 
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-200' 
-                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                    }`}
-                >
-                    {includeCaja ? <ToggleRight className="w-5 h-5"/> : <ToggleLeft className="w-5 h-5"/>}
-                    <span>{includeCaja ? 'Con Caja' : 'Sin Caja'}</span>
-                </button>
-
-                {/* SELECTORES - Mismo alto que el botón */}
-                <select 
-                    value={selectedMonth} 
-                    onChange={e => setSelectedMonth(e.target.value)}
-                    className="h-11 w-full lg:w-auto bg-white border border-slate-200 rounded-lg px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                >
-                    <option value="all">📅 Todo el Año</option>
-                    {months.map((m, i) => <option key={i} value={String(i)}>{m}</option>)}
-                </select>
-
-                <select 
-                    value={selectedYear} 
-                    onChange={e => setSelectedYear(parseInt(e.target.value))}
-                    className="h-11 w-full lg:w-auto bg-white border border-slate-200 rounded-lg px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                >
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-                
-                {/* BOTÓN EXPORTAR - Col span en móvil para que quede centrado si sobra espacio */}
-                <button 
-                    onClick={handlePrint}
-                    className="h-11 w-full lg:w-auto sm:col-span-2 lg:col-span-1 bg-slate-900 text-white px-5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold hover:bg-slate-800 hover:shadow-lg transition-all active:scale-95"
-                >
-                    <Printer className="w-4 h-4"/> <span>Exportar</span>
-                </button>
-            </div>
+        <div className="flex flex-wrap gap-4 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <button onClick={() => setIncludeCaja(!includeCaja)} className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold border transition-all duration-300 ${includeCaja ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-100'}`}>
+                {includeCaja ? <ToggleRight className="w-5 h-5"/> : <ToggleLeft className="w-5 h-5"/>} <span className="hidden sm:inline">{includeCaja ? 'Con Caja' : 'Sin Caja'}</span>
+            </button>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-white border p-2.5 rounded-lg text-sm font-bold text-slate-700 outline-none hover:border-blue-400 transition-all cursor-pointer"><option value="all">📅 Todo el Año</option>{months.map((m, i) => <option key={i} value={String(i)}>{m}</option>)}</select>
+            <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="bg-white border p-2.5 rounded-lg text-sm font-bold text-slate-700 outline-none hover:border-blue-400 transition-all cursor-pointer">{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
+            <button onClick={handlePrint} className="bg-slate-900 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-bold hover:bg-slate-800 hover:shadow-lg transition-all active:scale-95"><Printer className="w-4 h-4"/> <span className="hidden lg:inline">PDF</span></button>
         </div>
       </div>
 
-      <div ref={componentRef} className="space-y-10 print:p-8 print:bg-white print:space-y-6">
+      {/* TABS */}
+      <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-xl w-fit mx-auto md:mx-0 print-hidden">
+          <button onClick={() => setViewMode('charts')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'charts' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><PieChart className="w-4 h-4"/> Tablero Visual</button>
+          <button onClick={() => setViewMode('table')} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'table' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Table2 className="w-4 h-4"/> Auditoría de Datos</button>
+      </div>
+
+      {/* === ÁREA IMPRIMIBLE === */}
+      <div ref={componentRef} className="print:w-full print:text-sm">
         
-        {/* TÍTULO DEL DOCUMENTO */}
-        <div className="text-center border-b border-slate-100 pb-6">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">{reportTitle}</h1>
-            <p className="text-slate-400 text-sm font-medium mt-2">Generado automáticamente el {new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        {/* HEADER IMPRESO */}
+        <div className="hidden print-only mb-8">
+            <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-4">
+                <div className="flex gap-4 items-center">
+                    <div className="w-20 h-20 bg-white border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden">
+                        {bizInfo.logo_url ? (
+                            <img src={bizInfo.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                        ) : (
+                            <Building2 className="w-10 h-10 text-slate-300"/>
+                        )}
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-1">{bizInfo.name || 'MI NEGOCIO'}</h1>
+                        <div className="flex flex-col text-slate-600 text-sm font-medium gap-0.5">
+                            {bizInfo.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {bizInfo.address}</span>}
+                            {bizInfo.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {bizInfo.phone}</span>}
+                        </div>
+                    </div>
+                </div>
+                <div className="text-right">
+                    <h2 className="text-xl font-bold text-slate-800 uppercase">{reportTitle}</h2>
+                    <p className="text-slate-500 text-xs">Generado: {new Date().toLocaleDateString()}</p>
+                    <div className="mt-2 bg-slate-100 px-3 py-1 rounded text-xs font-bold inline-block border border-slate-200">{includeCaja ? 'Incluye Caja' : 'Sin Mov. Caja'}</div>
+                </div>
+            </div>
         </div>
 
-        {/* 1. TARJETAS FINANCIERAS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="relative overflow-hidden bg-gradient-to-br from-white to-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm hover:shadow-md transition-all duration-300 group">
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <TrendingUp className="w-24 h-24 text-emerald-600"/>
+        {viewMode === 'charts' && (
+        <>
+            {/* KPI CARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 print-grid print:gap-4">
+                <div className="relative overflow-hidden bg-gradient-to-br from-white to-emerald-50 p-6 rounded-3xl border border-emerald-100 shadow-lg shadow-emerald-50/50 print:border-slate-300 print:shadow-none print:bg-white print:p-4">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp className="w-24 h-24 text-emerald-600"/></div>
+                    <p className="text-emerald-600/70 text-xs font-bold uppercase tracking-widest mb-1 print:text-black">Ingresos Totales</p>
+                    <h3 className="text-4xl font-black text-slate-800 tracking-tight print:text-black">{formatMoney(financials.income)}</h3>
                 </div>
-                <div className="relative z-10">
-                    <p className="text-emerald-600/70 text-xs font-bold uppercase tracking-widest mb-2">Ingresos Totales</p>
-                    <div className="flex items-end gap-2">
-                         <h3 className="text-4xl font-black text-slate-800 tracking-tight">{formatMoney(financials.income)}</h3>
-                    </div>
+                <div className="relative overflow-hidden bg-gradient-to-br from-white to-rose-50 p-6 rounded-3xl border border-rose-100 shadow-lg shadow-rose-50/50 print:border-slate-300 print:shadow-none print:bg-white print:p-4">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingDown className="w-24 h-24 text-rose-600"/></div>
+                    <p className="text-rose-600/70 text-xs font-bold uppercase tracking-widest mb-1 print:text-black">Gastos Totales</p>
+                    <h3 className="text-4xl font-black text-slate-800 tracking-tight print:text-black">{formatMoney(financials.expense)}</h3>
                 </div>
-            </div>
-
-            <div className="relative overflow-hidden bg-gradient-to-br from-white to-rose-50 p-6 rounded-2xl border border-rose-100 shadow-sm hover:shadow-md transition-all duration-300 group">
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <TrendingDown className="w-24 h-24 text-rose-600"/>
-                </div>
-                <div className="relative z-10">
-                    <p className="text-rose-600/70 text-xs font-bold uppercase tracking-widest mb-2">Gastos Totales</p>
-                    <div className="flex items-end gap-2">
-                         <h3 className="text-4xl font-black text-slate-800 tracking-tight">{formatMoney(financials.expense)}</h3>
-                    </div>
-                </div>
-            </div>
-
-            <div className={`relative overflow-hidden p-6 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-300 group ${financials.profit >= 0 ? 'bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700' : 'bg-gradient-to-br from-red-50 to-white border-red-100'}`}>
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <Wallet className={`w-24 h-24 ${financials.profit >= 0 ? 'text-white' : 'text-red-600'}`}/>
-                </div>
-                <div className="relative z-10">
-                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${financials.profit >= 0 ? 'text-blue-300' : 'text-red-400'}`}>Utilidad Neta</p>
-                    <h3 className={`text-4xl font-black tracking-tight ${financials.profit >= 0 ? 'text-white' : 'text-red-600'}`}>{formatMoney(financials.profit)}</h3>
-                    <div className={`inline-flex items-center gap-1 mt-3 px-2 py-1 rounded text-xs font-bold ${financials.profit >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-100 text-red-600'}`}>
+                <div className={`relative overflow-hidden p-6 rounded-3xl border shadow-lg print:border-slate-300 print:shadow-none print:p-4 ${financials.profit >= 0 ? 'bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700 shadow-slate-200 print:bg-white' : 'bg-gradient-to-br from-red-50 to-white border-red-100 print:bg-white'}`}>
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet className={`w-24 h-24 ${financials.profit >= 0 ? 'text-white print:text-black' : 'text-red-600'}`}/></div>
+                    <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${financials.profit >= 0 ? 'text-blue-300 print:text-black' : 'text-red-400 print:text-black'}`}>Utilidad Neta</p>
+                    <h3 className={`text-4xl font-black tracking-tight ${financials.profit >= 0 ? 'text-white print:text-black' : 'text-red-600'}`}>{formatMoney(financials.profit)}</h3>
+                    <div className={`inline-flex items-center gap-1 mt-2 px-3 py-1 rounded-full text-xs font-bold ${financials.profit >= 0 ? 'bg-emerald-500/20 text-emerald-300 print:bg-emerald-50 print:text-emerald-700' : 'bg-red-100 text-red-600'}`}>
                         <Activity className="w-3 h-3"/> Margen: {financials.margin.toFixed(1)}%
                     </div>
                 </div>
             </div>
-        </div>
 
-        {/* 2. DESGLOSE POR CATEGORÍA */}
-        <div className="pt-2">
-            <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 pl-1">
-                <PieChart className="text-indigo-500 w-5 h-5"/> Desglose Financiero
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-emerald-100 transition-all duration-300 h-[420px]">
-                    <div className="flex items-center justify-between mb-6 border-b border-slate-50 pb-4">
-                        <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="bg-emerald-100 text-emerald-600 p-1.5 rounded-md"><ArrowUpCircle className="w-4 h-4"/></span> 
-                            Origen de Ingresos
-                        </h3>
-                    </div>
-                    <div className="w-full h-[300px]">
-                        {incomeCategoryData.length > 0 ? (
-                            <HorizontalChart data={incomeCategoryData} color="#10b981" barColor="#10b981" />
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-300">
-                                <FileText className="w-12 h-12 mb-2 opacity-20"/>
-                                <span className="text-sm font-medium">Sin datos registrados</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-rose-100 transition-all duration-300 h-[420px]">
-                    <div className="flex items-center justify-between mb-6 border-b border-slate-50 pb-4">
-                        <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="bg-rose-100 text-rose-600 p-1.5 rounded-md"><ArrowDownCircle className="w-4 h-4"/></span>
-                            Distribución de Gastos
-                        </h3>
-                    </div>
-                    <div className="w-full h-[300px]">
-                         {expenseCategoryData.length > 0 ? (
-                            <HorizontalChart data={expenseCategoryData} color="#ef4444" barColor="#f43f5e" />
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-300">
-                                <FileText className="w-12 h-12 mb-2 opacity-20"/>
-                                <span className="text-sm font-medium">Sin datos registrados</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {/* 3. SECCIÓN OPERATIVA */}
-        <div className="pt-2">
-            <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 pl-1">
-                <BarChart3 className="text-indigo-500 w-5 h-5"/> Rendimiento Operativo
-            </h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <OperationalChart data={weekDayData} title="Entre Semana (Lun - Vie)" icon={Wallet} color="#3b82f6" />
-                <OperationalChart data={weekendData} title="Fin de Semana (Sáb - Dom)" icon={CalendarRange} color="#8b5cf6" />
-            </div>
-        </div>
-
-        {/* 4. GRÁFICA TENDENCIA (HERO SECTION) */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl shadow-slate-100/50 print:break-inside-avoid relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
-            
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            {/* SECCIÓN OPERATIVA */}
+            <div className="print-grid-2 print-break-inside-avoid mb-8">
                 <div>
-                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        {chartTitle}
-                    </h3>
-                    <p className="text-slate-400 text-sm mt-1">Visualización del flujo de ingresos.</p>
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 pl-1 print:text-black print:mb-2 print:border-b print:pb-1 print:text-sm">
+                        <BarChart3 className="text-indigo-500 w-5 h-5 print:hidden"/> Rendimiento Operativo
+                    </h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:grid-cols-1 print:gap-4">
+                        <OperationalChart 
+                            data={weekDayData} 
+                            title="Días Laborales (Lun - Vie)" 
+                            subtitle="Días Laborales"
+                            icon={Wallet} 
+                            color="blue" 
+                            id="1" 
+                            printDesc="Distribución de ingresos durante la semana laboral."
+                        />
+                        <OperationalChart 
+                            data={weekendData} 
+                            title="Fin de Semana (Sáb - Dom)" 
+                            subtitle="Fin de Semana"
+                            icon={CalendarRange} 
+                            color="amber" 
+                            id="2"
+                            printDesc="Comportamiento de ventas durante el fin de semana."
+                        />
+                    </div>
                 </div>
-                <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Periodo</span>
-                    <p className="text-lg font-bold text-slate-800">{formatMoney(financials.income)}</p>
+                
+                {/* DESGLOSE (Se forza a la derecha en impresión) */}
+                <div className="print-only">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 pl-1 print:text-black print:mb-2 print:border-b print:pb-1 print:text-sm">
+                        Desglose Financiero
+                    </h2>
+                    <div className="flex flex-col gap-4">
+                        <CategoryChart data={incomeCategoryData} title="Top Ingresos" subtitle="Por Categoría" icon={ArrowUpCircle} color="green" />
+                        <CategoryChart data={expenseCategoryData} title="Top Gastos" subtitle="Por Categoría" icon={ArrowDownCircle} color="red" />
+                    </div>
                 </div>
             </div>
 
-            <div className="h-[300px] w-full">
-                {trendData.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-slate-300">Sin datos</div>
-                ) : (
-                    <div className="w-full h-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={trendData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.3}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 600 }} interval={selectedMonth === 'all' ? 0 : 2} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v)=>`$${v/1000}k`} />
-                                <Tooltip content={<CustomTooltip prefix="Ingreso" />} cursor={{fill: '#ecfdf5'}} />
-                                
-                                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={50} animationDuration={2000}>
-                                    {trendData.map((entry, index) => {
-                                        // LOGICA DE COLOR PARA FIN DE SEMANA
-                                        let fillColor = "url(#colorValue)";
-                                        if (selectedMonth !== 'all') {
-                                            const date = new Date(selectedYear, parseInt(selectedMonth), index + 1);
-                                            const day = date.getDay();
-                                            if (day === 0 || day === 6) { 
-                                                fillColor = "#f59e0b"; // ÁMBAR PARA FINDE
-                                            }
-                                        }
-                                        return <Cell key={`cell-${index}`} fill={fillColor} />;
-                                    })}
-                                    <LabelList 
-                                        dataKey="value" 
-                                        position="top" 
-                                        formatter={formatCompactMoney} 
-                                        style={{ fontSize: '10px', fill: '#64748b', fontWeight: 'bold' }} 
-                                    />
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-            
-            <div className="mt-8 pt-6 border-t border-slate-100 flex items-start gap-4">
-                <div className="bg-blue-50 p-2 rounded-full text-blue-600 mt-1">
-                    <Activity className="w-5 h-5"/>
+            {/* DESGLOSE (PANTALLA) */}
+            <div className="pt-2 print-hidden">
+                <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 pl-1"><PieChart className="text-indigo-500 w-5 h-5"/> Desglose Financiero</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <CategoryChart data={incomeCategoryData} title="Origen de Ingresos" subtitle="Categorías Principales" icon={ArrowUpCircle} color="green" />
+                    <CategoryChart data={expenseCategoryData} title="Distribución de Gastos" subtitle="Egresos Operativos" icon={ArrowDownCircle} color="red" />
                 </div>
-                <div>
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-1">Análisis Inteligente</h4>
-                    <p className="text-sm text-slate-600 leading-relaxed max-w-4xl">
-                        El periodo muestra una ganancia neta de <strong className="text-emerald-600">{formatMoney(financials.profit)}</strong> con un margen del <strong>{financials.margin.toFixed(1)}%</strong>. 
-                        El punto operativo más fuerte se registra el <strong>{dayStats.bestDay}</strong>.
+            </div>
+
+            {/* TENDENCIA (Full Width) */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl shadow-slate-100/50 print:break-inside-avoid print:shadow-none print:border-slate-300 print:rounded-xl print:mt-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 print:mb-4">
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2 print:text-black">{chartTitle}</h3>
+                        <p className="text-slate-400 text-sm mt-1 print:hidden">Visualización del flujo de ingresos.</p>
+                    </div>
+                </div>
+                <div className="h-[300px] w-full print:h-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={trendData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.3}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" printStroke="#e2e8f0"/>
+                            <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} printTick={{ fill: '#000' }}/>
+                            <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v)=>`$${v/1000}k`} printTick={{ fill: '#000' }}/>
+                            <Tooltip content={<CustomTooltip />} cursor={{fill: '#ecfdf5'}} />
+                            <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={50} animationDuration={2000} printFill="#333">
+                                {trendData.map((entry, index) => {
+                                    let fillColor = "url(#colorValue)";
+                                    if (selectedMonth !== 'all') {
+                                        const date = new Date(selectedYear, parseInt(selectedMonth), index + 1);
+                                        const day = date.getDay();
+                                        if (day === 0 || day === 6) fillColor = "#f59e0b";
+                                    }
+                                    return <Cell key={`cell-${index}`} fill={fillColor} />;
+                                })}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+                {/* FOOTER ANALYSIS TENDENCIA */}
+                <div className="mt-4 pt-3 border-t border-slate-50 print:border-slate-300">
+                    <p className="text-xs text-slate-500 leading-relaxed text-center print:text-black">
+                        El punto más alto de ingresos en este periodo se registró en <strong>{maxTrendLabel}</strong>. Los picos en color ámbar (si existen) representan fines de semana.
                     </p>
                 </div>
             </div>
-        </div>
+        </>
+        )}
 
+        {/* VISTA 2: TABLA DE DATOS */}
+        {viewMode === 'table' && (
+            <div className="animate-fade-in">
+                 {/* CONTROLES (OCULTOS EN PRINT) */}
+                 <div className="flex flex-col md:flex-row justify-between gap-4 mb-4 print-hidden">
+                     <div className="flex gap-2 w-full md:w-auto">
+                        <div className="relative w-full md:w-64">
+                            <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400"/>
+                            <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium outline-none shadow-sm"/>
+                        </div>
+                        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 text-sm font-medium outline-none shadow-sm"><option value="all">Todo</option><option value="income">Ingresos</option><option value="expense">Gastos</option></select>
+                     </div>
+                     <button onClick={handleExport} className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold hover:bg-slate-50 transition"><Download className="w-4 h-4"/> Exportar Datos</button>
+                 </div>
+
+                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden print:border-slate-300 print:shadow-none print:w-full">
+                    <div className="overflow-x-auto print:overflow-visible">
+                        <table className="w-full text-sm text-left print-table">
+                            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs print:bg-white print:text-black print:border-black">
+                                <tr>
+                                    <th className="px-6 py-4 print:px-2 print:py-1">Fecha</th>
+                                    <th className="px-6 py-4 print:px-2 print:py-1">Categoría</th>
+                                    <th className="px-6 py-4 print:px-2 print:py-1">Descripción</th>
+                                    <th className="px-6 py-4 text-center print:px-2 print:py-1">Tipo</th>
+                                    <th className="px-6 py-4 text-right print:px-2 print:py-1">Monto</th>
+                                    {isAdmin && <th className="px-6 py-4 text-center print-hidden">Acciones</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 print:divide-slate-200">
+                                {filteredTransactions.map((t) => (
+                                    <tr key={t.id} className="hover:bg-slate-50 print:break-inside-avoid">
+                                        <td className="px-6 py-3 font-medium print:px-2 print:py-1 print:text-black">{format(new Date(t.date + 'T00:00:00'), 'dd/MM/yyyy')}</td>
+                                        <td className="px-6 py-3 print:px-2 print:py-1"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold border border-slate-200 print:border-none print:bg-transparent print:p-0 print:text-black">{t.category}</span></td>
+                                        <td className="px-6 py-3 text-slate-500 max-w-xs truncate print:px-2 print:py-1 print:text-black print:whitespace-normal">{t.description || '-'}</td>
+                                        <td className="px-6 py-3 text-center print:px-2 print:py-1">{t.type === 'income' ? <span className="text-emerald-600 font-bold print:text-black">Ingreso</span> : <span className="text-rose-600 font-bold print:text-black">Gasto</span>}</td>
+                                        <td className={`px-6 py-3 text-right font-bold font-mono print:px-2 print:py-1 ${t.type === 'income' ? 'text-emerald-600 print:text-black' : 'text-rose-600 print:text-black'}`}>{t.type === 'expense' ? '-' : ''}{formatMoney(t.amount)}</td>
+                                        {isAdmin && <td className="px-6 py-3 text-center flex justify-center gap-2 print-hidden"><button onClick={() => setEditingTransaction(t)} className="p-2 text-blue-400 hover:bg-blue-50 rounded-full"><Pencil className="w-4 h-4"/></button><button onClick={() => handleDelete(t.id)} className="p-2 text-rose-400 hover:bg-rose-50 rounded-full"><Trash2 className="w-4 h-4"/></button></td>}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                 </div>
+                 
+                 <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg mt-4 flex flex-col sm:flex-row justify-between items-center text-sm gap-4 print:bg-white print:border-t-2 print:border-black print:rounded-none print:mt-2 print:break-inside-avoid">
+                    <span className="text-slate-500 print:text-black">Registros visibles: <strong>{filteredTransactions.length}</strong></span>
+                    <div className="flex gap-4 sm:gap-6 flex-wrap justify-center">
+                        <span className="text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 print:bg-transparent print:border-none print:text-black print:p-0">Ingresos: {formatMoney(totalVisibleIncome)}</span>
+                        <span className="text-rose-600 font-bold bg-rose-50 px-3 py-1 rounded-lg border border-rose-100 print:bg-transparent print:border-none print:text-black print:p-0">Gastos: {formatMoney(totalVisibleExpense)}</span>
+                        <span className={`font-black px-3 py-1 rounded-lg border print:bg-transparent print:border-none print:text-black print:p-0 ${totalVisibleBalance >= 0 ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>Balance: {formatMoney(totalVisibleBalance)}</span>
+                    </div>
+                 </div>
+            </div>
+        )}
+
+        {/* MODAL DE EDICIÓN */}
+        {editingTransaction && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4 print-hidden">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                    <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Pencil className="w-4 h-4 text-blue-500"/> Editar Movimiento</h3>
+                        <button onClick={() => setEditingTransaction(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="text-xs font-bold text-slate-500 uppercase">Fecha</label><input type="date" value={editingTransaction.date} onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})} className="w-full mt-1 p-2 border rounded-lg text-sm"/></div>
+                            <div><label className="text-xs font-bold text-slate-500 uppercase">Monto</label><input type="number" value={editingTransaction.amount} onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})} className="w-full mt-1 p-2 border rounded-lg text-sm font-bold text-right"/></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Categoría</label><select value={editingTransaction.category} onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})} className="w-full mt-1 p-2 border rounded-lg text-sm bg-white"><option value="">Seleccionar...</option>{categoriesList.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Descripción</label><input type="text" value={editingTransaction.description || ''} onChange={(e) => setEditingTransaction({...editingTransaction, description: e.target.value})} className="w-full mt-1 p-2 border rounded-lg text-sm"/></div>
+                        <button onClick={handleSaveEdit} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition shadow-lg mt-4"><Save className="w-4 h-4"/> Guardar Cambios</button>
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );
