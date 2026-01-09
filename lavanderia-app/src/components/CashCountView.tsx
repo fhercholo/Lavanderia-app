@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Save, Coins, Calculator, AlertTriangle, CheckCircle2, RefreshCw, History, ArrowRight, Eraser, Eye } from 'lucide-react';
+import { Save, Coins, Calculator, AlertTriangle, CheckCircle2, RefreshCw, History, ArrowRight, Eraser, Eye, Plus, Minus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 // Lista de denominaciones completa
@@ -12,11 +12,11 @@ export function CashCountView() {
   const [loading, setLoading] = useState(false);
   const [lastSavedDate, setLastSavedDate] = useState<string | null>(null);
 
-  // ESTADO 1: Base Anterior (Solo lectura - DB)
+  // ESTADO 1: Base Anterior (Lo que había ayer)
   const [prevDenominations, setPrevDenominations] = useState<Record<string, number>>({});
   
-  // ESTADO 2: Captura Actual (Editable)
-  const [currentDenominations, setCurrentDenominations] = useState<Record<string, number>>({});
+  // ESTADO 2: Ajustes del Día (Lo que sumas o restas hoy) - Inicia en 0
+  const [adjustments, setAdjustments] = useState<Record<string, number>>({});
 
   // Totales Financieros
   const [totals, setTotals] = useState({ income: 0, expense: 0, expected: 0 });
@@ -24,44 +24,61 @@ export function CashCountView() {
 
   // --- EFECTOS ---
   useEffect(() => {
+    // Reset visual al cambiar fecha
     setPrevDenominations({});
-    setCurrentDenominations({});
+    setAdjustments({});
     setCountedAmount(0);
     setTotals({ income: 0, expense: 0, expected: 0 });
     setLastSavedDate(null);
+    
     fetchData();
   }, [selectedDate]);
 
   useEffect(() => {
     calculateTotal();
-  }, [currentDenominations]);
+  }, [adjustments, prevDenominations]);
 
+  // --- LÓGICA DE CARGA (DELTA) ---
   const fetchData = async () => {
     setLoading(true);
     try {
-        await Promise.all([
-            fetchSystemProfit(),
-            fetchPreviousCut(),
-            fetchCurrentCut()
-        ]);
+        await fetchSystemProfit();
+
+        // 1. Buscar Corte de HOY
+        const { data: currentData } = await supabase.from('cash_counts').select('*').eq('date', selectedDate).single();
+
+        // 2. Buscar Corte ANTERIOR (Base)
+        const { data: prevData } = await supabase.from('cash_counts').select('*').lt('date', selectedDate).order('date', { ascending: false }).limit(1).single();
+
+        // A) Configurar Base (Columna Gris)
+        const baseMap = prevData?.denominations || {};
+        if (prevData) {
+            setLastSavedDate(prevData.date);
+            setPrevDenominations(baseMap);
+        }
+
+        // B) Configurar Ajustes (Inputs)
+        const newAdjustments: Record<string, number> = {};
+        
+        DENOMINATIONS_LIST.forEach(val => {
+            if (currentData?.denominations) {
+                // Si ya guardé hoy, el ajuste es la diferencia: (Lo que guardé HOY) - (Lo que había AYER)
+                const currentQty = currentData.denominations[val] || 0;
+                const prevQty = baseMap[val] || 0;
+                newAdjustments[val] = currentQty - prevQty;
+            } else {
+                // Si es nuevo día, empezamos en CERO (neutro)
+                newAdjustments[val] = 0;
+            }
+        });
+        
+        setAdjustments(newAdjustments);
+
     } catch (e) {
         console.error("Error cargando datos:", e);
     } finally {
         setLoading(false);
     }
-  };
-
-  const fetchPreviousCut = async () => {
-    const { data } = await supabase.from('cash_counts').select('date, denominations').lt('date', selectedDate).order('date', { ascending: false }).limit(1).single();
-    if (data) {
-        setLastSavedDate(data.date);
-        setPrevDenominations(data.denominations || {});
-    }
-  };
-
-  const fetchCurrentCut = async () => {
-    const { data } = await supabase.from('cash_counts').select('denominations').eq('date', selectedDate).single();
-    if (data && data.denominations) setCurrentDenominations(data.denominations);
   };
 
   const fetchSystemProfit = async () => {
@@ -75,36 +92,53 @@ export function CashCountView() {
 
   const calculateTotal = () => {
     let total = 0;
-    Object.entries(currentDenominations).forEach(([value, count]) => {
-      total += parseFloat(value) * count;
+    DENOMINATIONS_LIST.forEach((val) => {
+      const base = prevDenominations[val] || 0;
+      const adj = adjustments[val] || 0;
+      // El total real es: (Base + Ajuste) * Valor
+      // Usamos Math.max(0, ...) para evitar dinero negativo absurdo, aunque permitimos el ajuste negativo
+      const finalCount = Math.max(0, base + adj); 
+      total += parseFloat(val) * finalCount;
     });
     setCountedAmount(total);
   };
 
-  const handleChange = (value: string, count: string) => {
-    const qty = count === '' ? 0 : parseFloat(count);
-    setCurrentDenominations(prev => ({ ...prev, [value]: qty }));
+  const handleChange = (value: string, inputValue: string) => {
+    // Permitir números negativos y vacíos
+    const qty = inputValue === '' ? 0 : parseFloat(inputValue);
+    setAdjustments(prev => ({ ...prev, [value]: qty }));
   };
 
   const handleSave = async () => {
     if (!isAdmin) return;
-    if (countedAmount <= 0 && !confirm("⚠️ El total es $0.00. ¿Deseas guardar?")) return;
+    if (countedAmount < 0 && !confirm("⚠️ El total es negativo. ¿Deseas guardar?")) return;
 
     setLoading(true);
     const difference = countedAmount - totals.expected;
     
+    // Construir el objeto FINAL (Base + Ajuste) para guardar en DB
+    const finalDenominations: Record<string, number> = {};
+    DENOMINATIONS_LIST.forEach(val => {
+        const base = prevDenominations[val] || 0;
+        const adj = adjustments[val] || 0;
+        finalDenominations[val] = Math.max(0, base + adj); // Guardamos el valor absoluto resultante
+    });
+
     const { error } = await supabase.from('cash_counts').upsert({ 
             date: selectedDate,
             expected_amount: totals.expected,
             counted_amount: countedAmount,
             difference: difference,
-            denominations: currentDenominations,
+            denominations: finalDenominations, // <-- Se guarda el total real, no el ajuste
             notes: difference === 0 ? 'Corte Perfecto' : difference > 0 ? 'Sobrante' : 'Faltante'
         }, { onConflict: 'date' }); 
 
     setLoading(false);
     if (error) alert('Error al guardar: ' + error.message);
-    else { alert('✅ Corte guardado correctamente.'); fetchData(); }
+    else { 
+        alert('✅ Histórico actualizado correctamente.'); 
+        fetchData(); 
+    }
   };
 
   const difference = countedAmount - totals.expected;
@@ -119,9 +153,9 @@ export function CashCountView() {
         <div className="text-center md:text-left">
           <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-800 flex items-center justify-center md:justify-start gap-3 tracking-tight">
             <div className="bg-amber-500 p-2 rounded-lg text-white shadow-lg shadow-amber-200"><Coins className="w-6 h-6" /></div>
-            Corte de Caja
+            Caja Continua
           </h2>
-          <p className="text-slate-500 font-medium mt-1 ml-1 text-sm">Arqueo de efectivo diario.</p>
+          <p className="text-slate-500 font-medium mt-1 ml-1 text-sm">Ajuste de flujo diario.</p>
         </div>
         
         <div className="w-full md:w-auto flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
@@ -132,13 +166,13 @@ export function CashCountView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
         
-        {/* COLUMNA IZQUIERDA: CALCULADORA */}
+        {/* COLUMNA IZQUIERDA: CALCULADORA DE AJUSTES */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-100 overflow-hidden relative flex flex-col h-auto max-h-[80vh] lg:max-h-none">
           
           <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center shrink-0 sticky top-0 z-10">
             <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm lg:text-base">
-                    <Calculator className="w-5 h-5 text-indigo-500"/> Desglose
+                    <Calculator className="w-5 h-5 text-indigo-500"/> Ajustes
                 </h3>
                 {!isAdmin && (
                     <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -150,7 +184,7 @@ export function CashCountView() {
                 <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200 flex items-center gap-1 shadow-sm">
                     <History className="w-3 h-3 text-slate-400"/> Base: {lastSavedDate}
                 </span>
-            ) : <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">Sin base</span>}
+            ) : <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">Nueva Base</span>}
           </div>
           
           {/* TABLA DE MONEDAS */}
@@ -158,15 +192,16 @@ export function CashCountView() {
              <div className="grid grid-cols-12 gap-0 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase py-2 border-b border-slate-200 text-center sticky top-0 z-10 shadow-sm">
                  <div className="col-span-3">Valor</div>
                  <div className="col-span-3 text-slate-400 border-r border-slate-200">Base</div>
-                 <div className="col-span-3 text-emerald-600 border-r border-slate-200">Cant.</div>
-                 <div className="col-span-3">Total</div>
+                 <div className="col-span-3 text-blue-600 border-r border-slate-200">Ajuste (+/-)</div>
+                 <div className="col-span-3">Total $</div>
              </div>
 
              <div className="pb-2">
                 {DENOMINATIONS_LIST.map((val, index) => {
                    const qtyPrev = prevDenominations[val] || 0;
-                   const qtyCurr = currentDenominations[val] || 0;
-                   const totalRow = parseFloat(val) * qtyCurr;
+                   const qtyAdj = adjustments[val] || 0;
+                   const finalCount = Math.max(0, qtyPrev + qtyAdj);
+                   const totalRow = parseFloat(val) * finalCount;
                    
                    return (
                    <div key={val} className={`grid grid-cols-12 gap-0 items-center border-b border-slate-50 hover:bg-slate-50 transition p-1.5 lg:p-2 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
@@ -180,29 +215,36 @@ export function CashCountView() {
                       {/* BASE (READONLY) */}
                       <div className="col-span-3 flex justify-center border-r border-slate-100">
                          <div className="w-full text-center text-slate-400 font-mono text-xs lg:text-sm select-none">
-                            {qtyPrev > 0 ? qtyPrev : '-'}
+                            {qtyPrev}
                          </div>
                       </div>
 
-                      {/* CAPTURA (EDITABLE / AUDITOR) */}
-                      <div className="col-span-3 flex justify-center border-r border-slate-100 px-1">
+                      {/* AJUSTE (EDITABLE +/-) */}
+                      <div className="col-span-3 flex justify-center border-r border-slate-100 px-1 relative">
                          <input 
                             type="number" 
-                            min="0"
                             placeholder="0"
                             disabled={!isAdmin}
                             onFocus={(e) => e.target.select()}
-                            className={`w-full max-w-[4rem] text-center font-mono font-bold text-sm lg:text-base outline-none transition-all
+                            className={`w-full max-w-[4rem] text-center font-mono font-bold text-sm lg:text-base outline-none transition-all rounded py-1
                                 ${isAdmin 
-                                    ? 'border border-slate-300 rounded py-1 text-emerald-600 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 bg-white shadow-inner' 
-                                    : 'bg-transparent border-none text-slate-800 disabled:opacity-100 placeholder-transparent' 
+                                    ? qtyAdj !== 0 
+                                        ? qtyAdj > 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-rose-600 bg-rose-50 border-rose-200'
+                                        : 'text-slate-600 border border-slate-300 focus:ring-2 focus:ring-blue-400' 
+                                    : 'bg-transparent border-none text-slate-800' 
                                 }`}
-                            value={currentDenominations[val] === undefined ? '' : currentDenominations[val]}
+                            value={adjustments[val] === 0 ? '' : adjustments[val]}
                             onChange={(e) => handleChange(val, e.target.value)}
                           />
+                          {/* Indicador visual de signo */}
+                          {qtyAdj !== 0 && (
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                  {qtyAdj > 0 ? <Plus className="w-3 h-3 text-emerald-400"/> : <Minus className="w-3 h-3 text-rose-400"/>}
+                              </div>
+                          )}
                       </div>
 
-                      {/* SUBTOTAL */}
+                      {/* TOTAL ROW (Base + Ajuste) */}
                       <div className="col-span-3 text-right pr-2 lg:pr-6 font-bold text-slate-700 text-xs lg:text-sm">
                          {totalRow > 0 ? money(totalRow) : <span className="text-slate-200">-</span>}
                       </div>
@@ -215,7 +257,7 @@ export function CashCountView() {
           <div className="bg-slate-900 p-4 lg:p-5 flex justify-between items-center text-white shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-20">
              <div className="flex items-center gap-2">
                  {isAdmin && (
-                     <button onClick={() => {if(confirm('¿Limpiar todo?')) setCurrentDenominations({})}} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition" title="Limpiar captura">
+                     <button onClick={() => {if(confirm('¿Reiniciar ajustes a cero?')) setAdjustments({})}} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition" title="Limpiar ajustes">
                         <Eraser className="w-4 h-4"/>
                      </button>
                  )}
@@ -230,7 +272,7 @@ export function CashCountView() {
            
            <div className={`p-4 lg:p-6 rounded-2xl border shadow-sm transition-all duration-500 ${isPerfect ? 'bg-gradient-to-br from-white to-emerald-50 border-emerald-100' : 'bg-white border-slate-100'}`}>
               <div className="flex justify-between items-center mb-4 lg:mb-6">
-                  <h3 className="font-bold text-slate-800 text-base lg:text-lg">Validación de Cuadre</h3>
+                  <h3 className="font-bold text-slate-800 text-base lg:text-lg">Validación</h3>
                   <button onClick={fetchSystemProfit} className="text-slate-400 hover:text-blue-600 transition p-2 hover:bg-slate-100 rounded-full"><RefreshCw className="w-4 h-4"/></button>
               </div>
               
@@ -255,7 +297,7 @@ export function CashCountView() {
                   {/* Conteo Físico */}
                   <div className="bg-white p-4 lg:p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-500 group-hover:w-2 transition-all"></div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Real (Físico)</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Real (Base + Ajustes)</span>
                       <div className="text-2xl lg:text-3xl font-black text-emerald-600 tracking-tight">{money(countedAmount)}</div>
                   </div>
 
@@ -273,7 +315,7 @@ export function CashCountView() {
                           difference === 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
                           difference > 0 ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-rose-50 text-rose-700 border-rose-100'
                       }`}>
-                          {difference === 0 ? '✨ Cuadre Perfecto ✨' : difference > 0 ? 'Sobrante (Dinero Extra)' : '⚠️ Faltante de Dinero'}
+                          {difference === 0 ? '✨ Cuadre Perfecto ✨' : difference > 0 ? 'Sobrante' : '⚠️ Faltante'}
                       </div>
                   </div>
               </div>
@@ -291,7 +333,7 @@ export function CashCountView() {
                ) : (
                    <Save className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
                )}
-               <span className="tracking-wide">{loading ? 'Procesando...' : 'GUARDAR CORTE'}</span>
+               <span className="tracking-wide">{loading ? 'Guardando Ajustes...' : 'GUARDAR CORTE'}</span>
              </button>
            ) : (
              <div className="bg-orange-50 text-orange-600 p-4 rounded-xl text-center font-bold border border-orange-100 flex flex-col items-center gap-2 text-sm">

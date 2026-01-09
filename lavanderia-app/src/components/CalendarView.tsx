@@ -7,9 +7,8 @@ import {
 import { es } from 'date-fns/locale';
 import { 
   Plus, Trash2, Edit2, ArrowUpRight, ArrowDownRight, Camera, Search, Calendar as CalendarIcon, DollarSign,
-  ChevronLeft, ChevronRight, GripHorizontal, LayoutGrid
+  ChevronLeft, ChevronRight, GripHorizontal, LayoutGrid, X, CheckCircle2
 } from 'lucide-react'; 
-import { TransactionModal } from './TransactionModal';
 import { TicketScanner } from './TicketScanner'; 
 import { useAuth } from '../context/AuthContext'; 
 
@@ -28,12 +27,14 @@ export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
+  const [categoriesList, setCategoriesList] = useState<any[]>([]); // Nuevo: Lista de categorías
   
   // Modales y UI
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [editingTx, setEditingTx] = useState<any>(null);
+  const [editingTx, setEditingTx] = useState<any>(null); // Este es el "Estado Fresco"
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loadingSave, setLoadingSave] = useState(false);
 
   const years = Array.from({ length: 7 }, (_, i) => 2024 + i);
   const months = [
@@ -43,6 +44,7 @@ export function CalendarView() {
 
   useEffect(() => {
     fetchMonthData();
+    fetchCategories(); // Cargar categorías al inicio
   }, [currentDate]);
 
   const fetchMonthData = async () => {
@@ -60,9 +62,13 @@ export function CalendarView() {
     else setTransactions(data || []);
   };
 
+  const fetchCategories = async () => {
+      const { data } = await supabase.from('categories').select('*').order('name');
+      if(data) setCategoriesList(data);
+  };
+
   const handleDayClick = (day: Date) => {
     setSelectedDay(day);
-    // ELIMINADO: scrollIntoView agresivo que tapaba el calendario
   };
 
   const handlePrevDay = () => {
@@ -85,9 +91,58 @@ export function CalendarView() {
     else fetchMonthData();
   };
 
-  const handleEdit = (tx: any) => {
-    setEditingTx(tx);
-    setIsAddOpen(true);
+  // --- LÓGICA DE APERTURA DE MODAL (NUEVO vs EDITAR) ---
+  const handleOpenAdd = () => {
+      // Inicializar vacio para "Nuevo"
+      setEditingTx({
+          date: format(selectedDay, 'yyyy-MM-dd'),
+          amount: '',
+          category: '',
+          description: '',
+          type: 'income' // Default
+      });
+      setIsAddOpen(true);
+  };
+
+  const handleOpenEdit = (tx: any) => {
+      // Cargar datos existentes para "Editar"
+      setEditingTx({ ...tx });
+      setIsAddOpen(true);
+  };
+
+  const handleSave = async () => {
+      if (!editingTx.amount || !editingTx.category) return alert("Monto y Categoría son obligatorios");
+      
+      setLoadingSave(true);
+      
+      const payload = {
+          date: editingTx.date,
+          amount: parseFloat(editingTx.amount),
+          category: editingTx.category,
+          description: editingTx.description,
+          type: editingTx.type
+      };
+
+      let error;
+      if (editingTx.id) {
+          // Actualizar existente
+          const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingTx.id);
+          error = err;
+      } else {
+          // Crear nuevo
+          const { error: err } = await supabase.from('transactions').insert([payload]);
+          error = err;
+      }
+
+      setLoadingSave(false);
+
+      if (error) {
+          alert('Error al guardar: ' + error.message);
+      } else {
+          setIsAddOpen(false);
+          setEditingTx(null);
+          fetchMonthData();
+      }
   };
 
   // --- LÓGICA CALENDARIO ---
@@ -179,7 +234,7 @@ export function CalendarView() {
       {/* --- CONTENEDOR PRINCIPAL DIVIDIDO --- */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         
-        {/* === PARTE SUPERIOR: CALENDARIO (45% en Móvil) === */}
+        {/* === PARTE SUPERIOR: CALENDARIO === */}
         <div className="h-[45%] lg:h-auto lg:flex-1 overflow-y-auto p-2 lg:p-6 bg-slate-50 border-b lg:border-b-0 custom-scrollbar shrink-0">
             
             {searchTerm ? (
@@ -245,7 +300,6 @@ export function CalendarView() {
                                         </div>
                                     </div>
                                     
-                                    {/* Puntos visuales */}
                                     <div className="absolute bottom-1 left-1 lg:bottom-2 lg:left-2 flex gap-0.5 flex-wrap max-w-full">
                                         {dayTxs.slice(0, 4).map((t, i) => (
                                             <div key={i} className={`w-1.5 h-1.5 rounded-full ring-1 ring-white ${t.type==='income'?'bg-blue-500':'bg-rose-500'}`}></div>
@@ -260,15 +314,13 @@ export function CalendarView() {
             )}
         </div>
 
-        {/* === PARTE INFERIOR: DETALLES (55% en Móvil) === */}
+        {/* === PARTE INFERIOR: DETALLES === */}
         <div id="day-details" className="flex-1 lg:w-96 lg:flex-none bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-20 relative h-[55%] lg:h-auto">
             
-            {/* AGARRADERA VISUAL */}
             <div className="flex justify-center pt-2 pb-1 lg:hidden bg-white rounded-t-2xl shrink-0">
                 <GripHorizontal className="text-slate-300 w-8 h-8"/>
             </div>
 
-            {/* HEADER DEL DÍA */}
             <div className="px-4 pb-2 lg:p-6 border-b border-slate-100 bg-white sticky top-0 z-10 shrink-0">
                 <div className="flex items-center justify-between mb-2">
                     <button onClick={handlePrevDay} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-800 border border-slate-200 shadow-sm active:scale-95">
@@ -305,7 +357,6 @@ export function CalendarView() {
                 </div>
             </div>
 
-            {/* LISTA DE TRANSACCIONES */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 pb-24 lg:pb-4 custom-scrollbar"> 
                 {dayTransactions.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 min-h-[150px]">
@@ -340,7 +391,7 @@ export function CalendarView() {
                                 </span>
                                 {isAdmin && (
                                     <div className="flex gap-1 justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleEdit(tx)} className="p-1 text-slate-300 hover:text-indigo-500 transition-colors"><Edit2 className="w-3.5 h-3.5"/></button>
+                                        <button onClick={() => handleOpenEdit(tx)} className="p-1 text-slate-300 hover:text-indigo-500 transition-colors"><Edit2 className="w-3.5 h-3.5"/></button>
                                         <button onClick={() => handleDelete(tx.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5"/></button>
                                     </div>
                                 )}
@@ -354,7 +405,7 @@ export function CalendarView() {
             {isAdmin && (
                 <div className="absolute bottom-6 right-6 lg:static lg:p-4 lg:bg-white lg:border-t lg:border-slate-200 z-50 pointer-events-none lg:pointer-events-auto">
                     <button 
-                        onClick={() => { setEditingTx(null); setIsAddOpen(true); }} 
+                        onClick={handleOpenAdd} 
                         className="pointer-events-auto bg-slate-900 hover:bg-slate-800 text-white p-4 lg:py-3.5 lg:w-full rounded-full lg:rounded-xl font-bold shadow-xl shadow-slate-900/30 transition-all active:scale-95 flex items-center justify-center gap-2 hover:shadow-2xl"
                     >
                         <Plus className="w-6 h-6 lg:w-5 lg:h-5"/>
@@ -365,21 +416,104 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* MODALES */}
-      <TransactionModal 
-        isOpen={isAddOpen} 
-        onClose={() => { setIsAddOpen(false); setEditingTx(null); }} 
-        onSuccess={fetchMonthData} 
-        {...({ initialData: editingTx } as any)}
-        defaultDate={format(selectedDay, 'yyyy-MM-dd')}
-      />
+      {/* --- MODAL INLINE (COPIADO DE REPORTSVIEW Y ADAPTADO) --- */}
+      {isAddOpen && editingTx && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        {editingTx.id ? <Edit2 className="w-4 h-4 text-blue-500"/> : <Plus className="w-4 h-4 text-emerald-500"/>} 
+                        {editingTx.id ? 'Editar Movimiento' : 'Nuevo Movimiento'}
+                    </h3>
+                    <button onClick={() => setIsAddOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                </div>
+                
+                <div className="p-6 space-y-4">
+                    {/* TIPO DE MOVIMIENTO (SOLO PARA NUEVOS O EDITAR) */}
+                    <div className="flex gap-2 bg-slate-100 p-1 rounded-xl">
+                        <button 
+                            type="button"
+                            onClick={() => setEditingTx({...editingTx, type: 'income'})}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${editingTx.type === 'income' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <ArrowUpRight className="w-4 h-4"/> Ingreso
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setEditingTx({...editingTx, type: 'expense'})}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${editingTx.type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <ArrowDownRight className="w-4 h-4"/> Gasto
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Fecha</label>
+                            <input 
+                                type="date" 
+                                value={editingTx.date} 
+                                onChange={(e) => setEditingTx({...editingTx, date: e.target.value})} 
+                                className="w-full mt-1 p-2 border rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-slate-200"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Monto</label>
+                            <input 
+                                type="number" 
+                                value={editingTx.amount} 
+                                onChange={(e) => setEditingTx({...editingTx, amount: e.target.value})} 
+                                className={`w-full mt-1 p-2 border rounded-lg text-sm font-bold text-right outline-none focus:ring-2 ${editingTx.type === 'income' ? 'text-blue-600 focus:ring-blue-200' : 'text-rose-600 focus:ring-rose-200'}`}
+                                placeholder="0.00"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase">Categoría</label>
+                        <select 
+                            value={editingTx.category} 
+                            onChange={(e) => setEditingTx({...editingTx, category: e.target.value})} 
+                            className="w-full mt-1 p-2 border rounded-lg text-sm bg-white font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-200 uppercase"
+                        >
+                            <option value="">Seleccionar...</option>
+                            {categoriesList.filter(c => c.type === editingTx.type).map(c => (
+                                <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase">Descripción</label>
+                        <input 
+                            type="text" 
+                            value={editingTx.description || ''} 
+                            onChange={(e) => setEditingTx({...editingTx, description: e.target.value})} 
+                            className="w-full mt-1 p-2 border rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-200"
+                            placeholder="Detalles opcionales..."
+                        />
+                    </div>
+
+                    <button 
+                        onClick={handleSave} 
+                        disabled={loadingSave}
+                        className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition shadow-lg mt-2 active:scale-95 disabled:opacity-70"
+                    >
+                        {loadingSave ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <CheckCircle2 className="w-5 h-5"/>} 
+                        {editingTx.id ? 'Guardar Cambios' : 'Registrar Movimiento'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
       
       {isScannerOpen && (
         <TicketScanner 
           onScanComplete={(data: any[]) => {
              console.log("Ticket escaneado:", data);
              setIsScannerOpen(false);
-             setIsAddOpen(true); 
+             // Implementar lógica de scanner si es necesario
           }} 
           onClose={() => setIsScannerOpen(false)} 
         />

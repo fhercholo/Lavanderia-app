@@ -2,32 +2,27 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { 
   Trash2, Plus, Tag, Save, Building2, 
-  Lock, User, ShieldCheck, Loader2, Camera, UploadCloud, Users, UserPlus, AlertCircle,
-  MapPin, Phone, Mail, FileText, Globe, Pencil, Search, AlertTriangle
+  Lock, ShieldCheck, Loader2, Camera, UploadCloud, Users, UserPlus, AlertCircle,
+  MapPin, Phone, Mail, FileText, Globe, Pencil, Search, AlertTriangle, Database, Download, FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function CatalogsView() {
-  const { isAdmin, session } = useAuth();
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
   const [passLoading, setPassLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [exporting, setExporting] = useState(false);
   
-  const [mainTab, setMainTab] = useState<'business' | 'catalogs' | 'security'>('business'); 
+  // Agregada pestaña 'data' para gestión de base de datos
+  const [mainTab, setMainTab] = useState<'business' | 'catalogs' | 'security' | 'data'>('business'); 
   
-  // ESTADO NEGOCIO (VERSIÓN PRO RECUPERADA)
+  // ESTADO NEGOCIO
   const [businessData, setBusinessData] = useState({ 
-      id: 0, 
-      name: '', 
-      address: '', 
-      phone: '', 
-      email: '', 
-      rfc: '',        
-      website: '',    
-      logo_url: '' 
+      id: 0, name: '', address: '', phone: '', email: '', rfc: '', website: '', logo_url: '' 
   });
 
-  // ESTADO CATÁLOGOS (VERSIÓN MEJORADA)
+  // ESTADO CATÁLOGOS
   const [categories, setCategories] = useState<any[]>([]);
   const [newItem, setNewItem] = useState('');
   const [catTypeTab, setCatTypeTab] = useState<'income' | 'expense'>('income');
@@ -85,20 +80,8 @@ export function CatalogsView() {
   const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault(); 
     if (!isAdmin) return;
-    
     setLoading(true);
-    const { error } = await supabase
-        .from('business_settings')
-        .update({
-            name: businessData.name,
-            address: businessData.address,
-            phone: businessData.phone,
-            email: businessData.email,
-            rfc: businessData.rfc,
-            website: businessData.website
-        })
-        .eq('id', businessData.id);
-    
+    const { error } = await supabase.from('business_settings').update(businessData).eq('id', businessData.id);
     setLoading(false); 
     if (error) alert('Error al guardar: ' + error.message); 
     else alert('¡Información del negocio actualizada!');
@@ -121,30 +104,19 @@ export function CatalogsView() {
 
   const handleUpdateCategory = async () => {
       if (!editingCategory || !isAdmin) return;
-      
       const newName = editingCategory.name.toUpperCase();
       const oldName = categories.find(c => c.id === editingCategory.id)?.name;
-
       if (!newName.trim()) return alert("El nombre no puede estar vacío");
 
-      const { error } = await supabase
-        .from('categories')
-        .update({ name: newName })
-        .eq('id', editingCategory.id);
-
+      const { error } = await supabase.from('categories').update({ name: newName }).eq('id', editingCategory.id);
       if (error) return alert("Error al actualizar: " + error.message);
 
       if (isUpdatingHistory && oldName) {
           if (confirm(`⚠️ ATENCIÓN: Esto cambiará "${oldName}" por "${newName}" en TODOS los registros históricos. ¿Continuar?`)) {
-              await supabase
-                .from('transactions')
-                .update({ category: newName })
-                .eq('category', oldName)
-                .eq('type', catTypeTab);
+              await supabase.from('transactions').update({ category: newName }).eq('category', oldName).eq('type', catTypeTab);
               alert("Historial actualizado correctamente.");
           }
       }
-
       setEditingCategory(null);
       setIsUpdatingHistory(false);
       fetchCategories();
@@ -177,12 +149,58 @@ export function CatalogsView() {
     e.preventDefault();
     if (newPassword.length < 6) return alert("La contraseña debe tener al menos 6 caracteres.");
     if (newPassword !== confirmPassword) return alert("Las contraseñas no coinciden");
-    
     setPassLoading(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setPassLoading(false);
-    
     if (error) alert(error.message); else { alert("Contraseña actualizada correctamente"); setNewPassword(''); setConfirmPassword(''); }
+  };
+
+  // --- LÓGICA DE EXPORTACIÓN (NUEVO) ---
+  const handleExportData = async (type: 'income' | 'expense') => {
+      if(!isAdmin) return;
+      setExporting(true);
+      try {
+          // 1. Obtener datos
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('date, category, description, amount')
+            .eq('type', type)
+            .order('date', { ascending: false });
+          
+          if(error) throw error;
+          if(!data || data.length === 0) { alert('No hay datos para exportar.'); return; }
+
+          // 2. Convertir a CSV
+          // Encabezados compatibles para re-importar
+          const headers = ['date', 'amount', 'category', 'description'];
+          const csvRows = [headers.join(',')];
+
+          data.forEach(row => {
+              const values = [
+                  row.date,
+                  row.amount,
+                  `"${row.category}"`, // Escapar comas en texto
+                  `"${row.description || ''}"`
+              ];
+              csvRows.push(values.join(','));
+          });
+
+          const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
+          
+          // 3. Descargar
+          const encodedUri = encodeURI(csvContent);
+          const link = document.createElement("a");
+          link.setAttribute("href", encodedUri);
+          link.setAttribute("download", `respaldo_${type}_${new Date().toISOString().split('T')[0]}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+      } catch (error: any) {
+          alert('Error exportando: ' + error.message);
+      } finally {
+          setExporting(false);
+      }
   };
 
   const currentCatList = categories.filter(c => c.type === catTypeTab).filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -205,7 +223,7 @@ export function CatalogsView() {
       {/* TABS DE NAVEGACIÓN */}
       <div className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-xl mb-8 w-fit">
         <button onClick={() => setMainTab('business')} className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${mainTab==='business'?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-            <Building2 className="w-4 h-4"/> Perfil de Negocio
+            <Building2 className="w-4 h-4"/> Perfil
         </button>
         <button onClick={() => setMainTab('catalogs')} className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${mainTab==='catalogs'?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
             <Tag className="w-4 h-4"/> Catálogos
@@ -213,35 +231,27 @@ export function CatalogsView() {
         <button onClick={() => setMainTab('security')} className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${mainTab==='security'?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
             <ShieldCheck className="w-4 h-4"/> Seguridad
         </button>
+        {isAdmin && (
+            <button onClick={() => setMainTab('data')} className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${mainTab==='data'?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
+                <Database className="w-4 h-4"/> Base de Datos
+            </button>
+        )}
       </div>
 
-      {/* --- PESTAÑA: NEGOCIO (DISEÑO PRO RECUPERADO) --- */}
+      {/* --- PESTAÑA: NEGOCIO --- */}
       {mainTab === 'business' && (
         <div className={`bg-white rounded-2xl shadow-lg shadow-slate-100 border border-slate-100 p-8 ${!isAdmin ? 'opacity-80 pointer-events-none' : ''}`}>
-            
             {!isAdmin && (
                 <div className="mb-6 bg-orange-50 text-orange-600 p-4 rounded-xl text-sm font-bold flex items-center gap-3 border border-orange-100">
                     <AlertCircle className="w-5 h-5"/> Estás en modo visualización. Contacta al administrador para editar estos datos.
                 </div>
             )}
-
             <div className="flex flex-col lg:flex-row gap-10">
-                
-                {/* COLUMNA IZQUIERDA: LOGO */}
                 <div className="flex flex-col items-center gap-4 lg:w-1/4">
                     <div className="relative group">
                         <div className="w-40 h-40 rounded-2xl border-4 border-slate-50 bg-white shadow-md flex items-center justify-center overflow-hidden">
-                            {businessData.logo_url ? (
-                                <img src={businessData.logo_url} className="w-full h-full object-contain p-2" alt="Logo" />
-                            ) : (
-                                <div className="text-slate-300 flex flex-col items-center">
-                                    <Camera className="w-12 h-12 mb-2 opacity-50" />
-                                    <span className="text-xs font-bold uppercase">Sin Logo</span>
-                                </div>
-                            )}
+                            {businessData.logo_url ? <img src={businessData.logo_url} className="w-full h-full object-contain p-2" alt="Logo" /> : <div className="text-slate-300 flex flex-col items-center"><Camera className="w-12 h-12 mb-2 opacity-50" /><span className="text-xs font-bold uppercase">Sin Logo</span></div>}
                         </div>
-                        
-                        {/* Botón Flotante de Carga */}
                         {isAdmin && (
                             <label className="absolute -bottom-3 -right-3 bg-blue-600 text-white p-3 rounded-full shadow-lg cursor-pointer hover:bg-blue-700 hover:scale-110 transition-all">
                                 {uploadingLogo ? <Loader2 className="w-5 h-5 animate-spin"/> : <UploadCloud className="w-5 h-5"/>}
@@ -249,118 +259,20 @@ export function CatalogsView() {
                             </label>
                         )}
                     </div>
-                    <p className="text-xs text-slate-400 text-center font-medium px-4">
-                        Formato recomendado: PNG o JPG cuadrado.
-                    </p>
+                    <p className="text-xs text-slate-400 text-center font-medium px-4">Formato recomendado: PNG o JPG cuadrado.</p>
                 </div>
-
-                {/* COLUMNA DERECHA: FORMULARIO */}
                 <form onSubmit={handleSaveBusiness} className="flex-1 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Nombre del Negocio */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Nombre Comercial</label>
-                            <div className="relative">
-                                <Building2 className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="text" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                    placeholder="Ej. Lavandería La Burbuja"
-                                    value={businessData.name} 
-                                    onChange={e => setBusinessData({...businessData, name: e.target.value})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
-
-                        {/* RFC */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">RFC</label>
-                            <div className="relative">
-                                <FileText className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="text" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none uppercase font-mono"
-                                    placeholder="XAXX010101000"
-                                    value={businessData.rfc || ''} 
-                                    onChange={e => setBusinessData({...businessData, rfc: e.target.value.toUpperCase()})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Teléfono */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Teléfono / WhatsApp</label>
-                            <div className="relative">
-                                <Phone className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="text" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                                    placeholder="(55) 1234 5678"
-                                    value={businessData.phone || ''} 
-                                    onChange={e => setBusinessData({...businessData, phone: e.target.value})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Dirección */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Dirección Física</label>
-                            <div className="relative">
-                                <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="text" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                                    placeholder="Calle, Número, Colonia, Ciudad"
-                                    value={businessData.address || ''} 
-                                    onChange={e => setBusinessData({...businessData, address: e.target.value})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Email */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Correo Electrónico</label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="email" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                                    placeholder="contacto@negocio.com"
-                                    value={businessData.email || ''} 
-                                    onChange={e => setBusinessData({...businessData, email: e.target.value})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Website */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Sitio Web (Opcional)</label>
-                            <div className="relative">
-                                <Globe className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/>
-                                <input 
-                                    type="text" 
-                                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                                    placeholder="www.minegocio.com"
-                                    value={businessData.website || ''} 
-                                    onChange={e => setBusinessData({...businessData, website: e.target.value})} 
-                                    disabled={!isAdmin}
-                                />
-                            </div>
-                        </div>
+                        <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Nombre Comercial</label><div className="relative"><Building2 className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="text" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all" placeholder="Ej. Lavandería La Burbuja" value={businessData.name} onChange={e => setBusinessData({...businessData, name: e.target.value})} disabled={!isAdmin}/></div></div>
+                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">RFC</label><div className="relative"><FileText className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="text" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none uppercase font-mono" placeholder="XAXX010101000" value={businessData.rfc || ''} onChange={e => setBusinessData({...businessData, rfc: e.target.value.toUpperCase()})} disabled={!isAdmin}/></div></div>
+                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Teléfono</label><div className="relative"><Phone className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="text" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="(55) 1234 5678" value={businessData.phone || ''} onChange={e => setBusinessData({...businessData, phone: e.target.value})} disabled={!isAdmin}/></div></div>
+                        <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Dirección Física</label><div className="relative"><MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="text" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Calle, Número, Colonia, Ciudad" value={businessData.address || ''} onChange={e => setBusinessData({...businessData, address: e.target.value})} disabled={!isAdmin}/></div></div>
+                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Email</label><div className="relative"><Mail className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="email" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="contacto@negocio.com" value={businessData.email || ''} onChange={e => setBusinessData({...businessData, email: e.target.value})} disabled={!isAdmin}/></div></div>
+                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Sitio Web</label><div className="relative"><Globe className="absolute left-3 top-3.5 w-5 h-5 text-slate-400"/><input type="text" className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="www.minegocio.com" value={businessData.website || ''} onChange={e => setBusinessData({...businessData, website: e.target.value})} disabled={!isAdmin}/></div></div>
                     </div>
-
                     {isAdmin && (
                         <div className="pt-4 flex justify-end">
-                            <button 
-                                type="submit" 
-                                disabled={loading} 
-                                className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-slate-200 transition-all active:scale-95 disabled:opacity-50"
-                            >
+                            <button type="submit" disabled={loading} className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-slate-200 transition-all active:scale-95 disabled:opacity-50">
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin"/> : <Save className="w-5 h-5" />}
                                 Guardar Cambios
                             </button>
@@ -371,13 +283,10 @@ export function CatalogsView() {
         </div>
       )}
 
-      {/* --- PESTAÑA: CATÁLOGOS (VERSIÓN MEJORADA) --- */}
+      {/* --- PESTAÑA: CATÁLOGOS --- */}
       {mainTab === 'catalogs' && (
         <div className="grid lg:grid-cols-12 gap-8">
-             
-             {/* COLUMNA IZQUIERDA: LISTADO (8/12) */}
              <div className="lg:col-span-8">
-                 {/* Toolbar Superior */}
                  <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
                     <div className="flex gap-2 bg-slate-100 p-1 rounded-lg w-full sm:w-auto">
                         <button onClick={() => setCatTypeTab('income')} className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-bold transition-all ${catTypeTab==='income'?'bg-emerald-500 text-white shadow-sm':'text-slate-500 hover:text-slate-700'}`}>Ingresos</button>
@@ -388,8 +297,6 @@ export function CatalogsView() {
                         <input type="text" placeholder="Buscar categoría..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>
                 </div>
-
-                {/* Grid de Tarjetas */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-2">
                     {currentCatList.map(item => (
                         <div key={item.id} className="group bg-white p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all relative overflow-hidden">
@@ -416,39 +323,14 @@ export function CatalogsView() {
                     )}
                 </div>
              </div>
-
-             {/* COLUMNA DERECHA: AGREGAR (4/12) */}
              {isAdmin && (
                  <div className="lg:col-span-4">
                     <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200 sticky top-6">
-                        <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-                            <div className="bg-white/10 p-2 rounded-lg"><Plus className="w-5 h-5 text-emerald-400"/></div>
-                            Nueva Categoría
-                        </h3>
+                        <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><div className="bg-white/10 p-2 rounded-lg"><Plus className="w-5 h-5 text-emerald-400"/></div> Nueva Categoría</h3>
                         <form onSubmit={handleAddCat} className="space-y-5">
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Nombre</label>
-                                <input 
-                                    type="text" 
-                                    value={newItem} 
-                                    onChange={e => setNewItem(e.target.value)} 
-                                    placeholder={catTypeTab === 'income' ? 'Ej. VENTA MOSTRADOR' : 'Ej. PAGO DE LUZ'} 
-                                    className="w-full mt-2 p-4 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none font-bold shadow-inner"
-                                />
-                            </div>
-                            
-                            <div className={`p-4 rounded-xl text-xs font-medium border flex items-start gap-3 ${catTypeTab === 'income' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200' : 'bg-rose-500/10 border-rose-500/20 text-rose-200'}`}>
-                                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0"/>
-                                <p>Se agregará a la lista de <strong>{catTypeTab === 'income' ? 'INGRESOS' : 'GASTOS'}</strong>.</p>
-                            </div>
-
-                            <button 
-                                type="submit" 
-                                disabled={!newItem.trim()} 
-                                className={`w-full font-bold py-4 rounded-xl transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${catTypeTab === 'income' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-900/20' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-900/20'}`}
-                            >
-                                <Save className="w-4 h-4"/> Guardar Categoría
-                            </button>
+                            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Nombre</label><input type="text" value={newItem} onChange={e => setNewItem(e.target.value)} placeholder={catTypeTab === 'income' ? 'Ej. VENTA MOSTRADOR' : 'Ej. PAGO DE LUZ'} className="w-full mt-2 p-4 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none font-bold shadow-inner"/></div>
+                            <div className={`p-4 rounded-xl text-xs font-medium border flex items-start gap-3 ${catTypeTab === 'income' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200' : 'bg-rose-500/10 border-rose-500/20 text-rose-200'}`}><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0"/><p>Se agregará a la lista de <strong>{catTypeTab === 'income' ? 'INGRESOS' : 'GASTOS'}</strong>.</p></div>
+                            <button type="submit" disabled={!newItem.trim()} className={`w-full font-bold py-4 rounded-xl transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${catTypeTab === 'income' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-900/20' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-900/20'}`}><Save className="w-4 h-4"/> Guardar Categoría</button>
                         </form>
                     </div>
                  </div>
@@ -456,7 +338,7 @@ export function CatalogsView() {
         </div>
       )}
 
-      {/* PESTAÑA: SEGURIDAD (SIN CAMBIOS) */}
+      {/* --- PESTAÑA: SEGURIDAD --- */}
       {mainTab === 'security' && (
         <div className="grid lg:grid-cols-2 gap-8">
             {isAdmin && (
@@ -468,9 +350,7 @@ export function CatalogsView() {
                             <input type="email" required placeholder="Correo electrónico" className="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)}/>
                             <div className="flex gap-2">
                                 <input type="password" required placeholder="Contraseña temporal" className="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100" value={newUserPass} onChange={e => setNewUserPass(e.target.value)}/>
-                                <button disabled={userLoading} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors">
-                                    {userLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Crear'}
-                                </button>
+                                <button disabled={userLoading} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors">{userLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Crear'}</button>
                             </div>
                         </form>
                     </div>
@@ -479,10 +359,7 @@ export function CatalogsView() {
                         <div key={u.id} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl hover:shadow-sm transition-shadow">
                           <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs ${u.role === 'admin' ? 'bg-purple-600' : 'bg-slate-400'}`}>{u.email.charAt(0).toUpperCase()}</div>
-                            <div>
-                              <p className="text-sm font-bold text-slate-700 truncate max-w-[150px]">{u.email}</p>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${u.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{u.role || 'Auditor'}</span>
-                            </div>
+                            <div><p className="text-sm font-bold text-slate-700 truncate max-w-[150px]">{u.email}</p><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${u.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{u.role || 'Auditor'}</span></div>
                           </div>
                           {u.id !== currentUser?.id && <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4"/></button>}
                         </div>
@@ -493,10 +370,7 @@ export function CatalogsView() {
             <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-fit ${!isAdmin ? 'lg:col-span-2' : ''}`}>
                 <div className="flex items-center gap-4 mb-8 pb-8 border-b border-slate-100">
                     <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-blue-100"><Lock className="w-7 h-7" /></div>
-                    <div>
-                        <h3 className="font-bold text-xl text-slate-800">Contraseña</h3>
-                        <p className="text-sm text-slate-500 mt-1">Actualiza tu clave de acceso personal.</p>
-                    </div>
+                    <div><h3 className="font-bold text-xl text-slate-800">Contraseña</h3><p className="text-sm text-slate-500 mt-1">Actualiza tu clave de acceso personal.</p></div>
                 </div>
                 <form onSubmit={handleUpdatePassword} className="space-y-6">
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nueva Contraseña</label><input type="password" className="w-full p-4 border border-slate-200 rounded-xl text-slate-800 focus:ring-4 focus:ring-blue-50 outline-none transition-all" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={e => setNewPassword(e.target.value)}/></div>
@@ -507,42 +381,85 @@ export function CatalogsView() {
         </div>
       )}
 
+      {/* --- NUEVA PESTAÑA: DATOS (IMPORTAR/EXPORTAR) --- */}
+      {mainTab === 'data' && isAdmin && (
+          <div className="grid lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+              
+              {/* EXPORTAR */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+                  <div className="flex items-center gap-4 mb-6">
+                      <div className="bg-indigo-100 p-3 rounded-xl text-indigo-600"><Download className="w-6 h-6"/></div>
+                      <div>
+                          <h3 className="font-bold text-lg text-slate-800">Exportar Información</h3>
+                          <p className="text-sm text-slate-500">Descarga copias de seguridad en CSV.</p>
+                      </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                      <button 
+                        onClick={() => handleExportData('income')}
+                        disabled={exporting}
+                        className="w-full bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 p-4 rounded-xl flex items-center justify-between group transition-all"
+                      >
+                          <div className="flex items-center gap-3">
+                              <FileSpreadsheet className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform"/>
+                              <div className="text-left">
+                                  <p className="font-bold text-slate-700 group-hover:text-emerald-700">Exportar Ventas</p>
+                                  <p className="text-xs text-slate-400 group-hover:text-emerald-600">Formato compatible para importar.</p>
+                              </div>
+                          </div>
+                          <Download className="w-4 h-4 text-slate-300 group-hover:text-emerald-500"/>
+                      </button>
+
+                      <button 
+                        onClick={() => handleExportData('expense')}
+                        disabled={exporting}
+                        className="w-full bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 p-4 rounded-xl flex items-center justify-between group transition-all"
+                      >
+                          <div className="flex items-center gap-3">
+                              <FileSpreadsheet className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform"/>
+                              <div className="text-left">
+                                  <p className="font-bold text-slate-700 group-hover:text-rose-700">Exportar Gastos</p>
+                                  <p className="text-xs text-slate-400 group-hover:text-rose-600">Formato compatible para importar.</p>
+                              </div>
+                          </div>
+                          <Download className="w-4 h-4 text-slate-300 group-hover:text-rose-500"/>
+                      </button>
+                  </div>
+              </div>
+
+              {/* IMPORTAR (Placeholder Visual) */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200 border-dashed p-8 flex flex-col items-center justify-center text-center">
+                  <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                      <Database className="w-8 h-8 text-slate-300"/>
+                  </div>
+                  <h3 className="font-bold text-slate-400 mb-2">Zona de Importación</h3>
+                  <p className="text-sm text-slate-400 max-w-xs">
+                      Aquí puedes agregar tu componente de "Importar CSV" cuando lo tengas listo. 
+                      Los archivos exportados funcionarán aquí.
+                  </p>
+              </div>
+          </div>
+      )}
+
       {/* MODAL DE EDICIÓN DE CATEGORÍA */}
       {editingCategory && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-in fade-in">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                   <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Pencil className="w-4 h-4 text-blue-600"/> Editar Categoría</h3>
-                      <button onClick={() => setEditingCategory(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                      <button onClick={() => setEditingCategory(null)} className="text-slate-400 hover:text-slate-600"></button>
                   </div>
                   <div className="p-6">
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nuevo Nombre</label>
-                      <input 
-                        type="text" 
-                        value={editingCategory.name} 
-                        onChange={(e) => setEditingCategory({...editingCategory, name: e.target.value})}
-                        className="w-full p-3 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 mb-6 uppercase"
-                      />
-                      
-                      {/* SWITCH UPDATE CASCADA */}
+                      <input type="text" value={editingCategory.name} onChange={(e) => setEditingCategory({...editingCategory, name: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 mb-6 uppercase" />
                       <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3 mb-6 cursor-pointer" onClick={() => setIsUpdatingHistory(!isUpdatingHistory)}>
                           <div className={`w-5 h-5 rounded border mt-0.5 flex items-center justify-center transition-colors ${isUpdatingHistory ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
                               {isUpdatingHistory && <div className="w-2.5 h-2.5 bg-white rounded-sm"></div>}
                           </div>
-                          <div>
-                              <p className="font-bold text-sm text-blue-900">Actualizar historial</p>
-                              <p className="text-xs text-blue-700/80 mt-1 leading-relaxed">
-                                  Si activas esto, todos los registros antiguos que tengan el nombre anterior se cambiarán al nuevo nombre automáticamente.
-                              </p>
-                          </div>
+                          <div><p className="font-bold text-sm text-blue-900">Actualizar historial</p><p className="text-xs text-blue-700/80 mt-1 leading-relaxed">Si activas esto, todos los registros antiguos se cambiarán al nuevo nombre automáticamente.</p></div>
                       </div>
-
-                      <button 
-                        onClick={handleUpdateCategory} 
-                        className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-lg"
-                      >
-                          Guardar Cambios
-                      </button>
+                      <button onClick={handleUpdateCategory} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-lg">Guardar Cambios</button>
                   </div>
               </div>
           </div>
